@@ -86,7 +86,7 @@ export interface Equipment {
 
 // ==================== 物品系统 (Items) ====================
 
-export type ItemType = 'consumable' | 'material' | 'technique' | 'misc';
+export type ItemType = 'consumable' | 'material' | 'technique' | 'misc' | 'equipment';
 
 export interface ItemEffect {
   attribute: string;
@@ -107,6 +107,31 @@ export interface GameItem {
   value: number;
   stackable: boolean;
   maxStack: number;
+  // ---- 装备相关字段（仅 type === 'equipment' 时有效） ----
+  /** 装备槽位 */
+  slot?: EquipmentSlot;
+  /** 品质等级 */
+  grade?: ItemGrade;
+  /** 装备所需最低 progressIndex */
+  realmRequirement?: number;
+  /** 当前耐久 */
+  durability?: number;
+  /** 最大耐久 */
+  maxDurability?: number;
+  /** 装备提供的属性加成 */
+  equipStats?: Partial<CoreStats>;
+  /** 装备特殊效果 */
+  specialEffects?: SpecialEffect[];
+}
+
+// ==================== 商店系统 (Shop) ====================
+
+/** 商店交易价格配置 */
+export interface ShopConfig {
+  /** 买入溢价倍率（玩家买入价格 = 物品基础价格 × buyPremium） */
+  buyPremium: number;
+  /** 卖出折价倍率（玩家卖出价格 = 物品基础价格 × sellDiscount） */
+  sellDiscount: number;
 }
 
 // ==================== 功法系统 (Techniques) ====================
@@ -338,7 +363,12 @@ export interface GameState {
 
 export type GameEvent =
   | { type: 'narrative'; text: string; speaker: string; timestamp: number }
-  | { type: 'stat_change'; target: 'player' | 'pet' | 'enemy'; petId?: string; changes: Partial<CoreStats> }
+  | {
+      type: 'stat_change';
+      target: 'player' | 'pet' | 'enemy';
+      petId?: string;
+      changes: Partial<CoreStats>;
+    }
   | { type: 'cultivation_gain'; amount: number }
   | { type: 'realm_advance'; newSubStage: SubStage; newRealm: RealmName; newProgressIndex: number }
   | { type: 'item_add'; item: GameItem }

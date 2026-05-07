@@ -65,6 +65,7 @@ const GameItemSchema = Type.Object({
     Type.Literal('material'),
     Type.Literal('technique'),
     Type.Literal('misc'),
+    Type.Literal('equipment'),
   ]),
   subtype: Type.String(),
   description: Type.String(),
@@ -73,6 +74,42 @@ const GameItemSchema = Type.Object({
   value: Type.Number(),
   stackable: Type.Boolean(),
   maxStack: Type.Number(),
+  // 装备字段（type === 'equipment' 时有效）
+  slot: Type.Optional(
+    Type.Union([
+      Type.Literal('weapon'),
+      Type.Literal('armor'),
+      Type.Literal('treasure'),
+      Type.Literal('accessory'),
+    ])
+  ),
+  grade: Type.Optional(
+    Type.Union([
+      Type.Literal('凡品'),
+      Type.Literal('灵品'),
+      Type.Literal('宝品'),
+      Type.Literal('仙品'),
+      Type.Literal('神品'),
+    ])
+  ),
+  equipStats: Type.Optional(StatChangesSchema),
+  realmRequirement: Type.Optional(Type.Number()),
+  durability: Type.Optional(Type.Number()),
+  maxDurability: Type.Optional(Type.Number()),
+  specialEffects: Type.Optional(
+    Type.Array(
+      Type.Object({
+        trigger: Type.Union([
+          Type.Literal('on_attack'),
+          Type.Literal('on_defend'),
+          Type.Literal('on_cultivate'),
+          Type.Literal('passive'),
+        ]),
+        effect: Type.String(),
+        value: Type.Number(),
+      })
+    )
+  ),
 });
 
 const ItemAddEventSchema = Type.Object({
@@ -103,12 +140,49 @@ const RealmAdvanceEventSchema = Type.Object({
   newProgressIndex: Type.Number(),
 });
 
+// ---- Phase 6 新增事件 ----
+
+const ItemUseEventSchema = Type.Object({
+  type: Type.Literal('item_use'),
+  itemId: Type.String(),
+  effects: Type.Array(ItemEffectSchema),
+});
+
+const ItemRemoveEventSchema = Type.Object({
+  type: Type.Literal('item_remove'),
+  itemId: Type.String(),
+  quantity: Type.Number(),
+});
+
+const EquipmentChangeEventSchema = Type.Object({
+  type: Type.Literal('equipment_change'),
+  slot: Type.Union([
+    Type.Literal('weapon'),
+    Type.Literal('armor'),
+    Type.Literal('treasure'),
+    Type.Literal('accessory'),
+  ]),
+  /** 装备 ID（从预定义装备库中查找）或 null 表示卸下 */
+  itemId: Type.Optional(Type.String()),
+});
+
+const TradeEventSchema = Type.Object({
+  type: Type.Literal('trade'),
+  bought: Type.Array(GameItemSchema),
+  sold: Type.Array(GameItemSchema),
+  spiritStonesChange: Type.Number(),
+});
+
 // ==================== 事件联合类型 ====================
 
 const GameEventSchema = Type.Union([
   NarrativeEventSchema,
   StatChangeEventSchema,
   ItemAddEventSchema,
+  ItemUseEventSchema,
+  ItemRemoveEventSchema,
+  EquipmentChangeEventSchema,
+  TradeEventSchema,
   SpiritStonesChangeEventSchema,
   DecisionRequiredEventSchema,
   CultivationGainEventSchema,

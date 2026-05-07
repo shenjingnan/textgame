@@ -11,6 +11,9 @@ import {
 } from '../combat/combat-manager';
 import { quickResolve } from '../combat/combat-resolver';
 import { getEnemyById } from '../combat/enemy-data';
+import * as EquipmentService from '../inventory/equipment-service';
+import * as ItemService from '../inventory/item-service';
+import * as ShopService from '../inventory/shop-service';
 import { GameLLMClient } from '../llm/client';
 import { ContextManager } from '../llm/context-manager';
 import {
@@ -90,7 +93,9 @@ const WELCOME_TEXT = `
 - "与路边的散修交谈"
 
 特殊命令：**/status** 查看状态 | **/look** 观察周围 | **/inventory** 背包
-**/move <地点>** 移动 | **/save** 存档 | **/load** 读档 | **/help** 帮助 | **/quit** 退出
+**/move <地点>** 移动 | **/equip <物品>** 装备 | **/use <物品>** 使用
+**/shop** 商店 | **/buy <物品>** 购买 | **/sell <物品>** 出售
+**/save** 存档 | **/load** 读档 | **/help** 帮助 | **/quit** 退出
 `.trim();
 
 // ==================== GameEngine ====================
@@ -250,6 +255,27 @@ export class GameEngine {
       case '/cultivate':
         return this.cmdCultivate(arg);
 
+      case '/equip':
+        return this.cmdEquip(arg);
+
+      case '/unequip':
+        return this.cmdUnequip(arg);
+
+      case '/use':
+        return this.cmdUse(arg);
+
+      case '/shop':
+        return this.cmdShop();
+
+      case '/buy':
+        return this.cmdBuy(arg);
+
+      case '/sell':
+        return this.cmdSell(arg);
+
+      case '/repair':
+        return this.cmdRepair(arg);
+
       case '/save':
         return this.cmdSave(arg);
 
@@ -319,7 +345,21 @@ export class GameEngine {
     };
     for (const [slot, item] of Object.entries(player.equipment)) {
       const name = slotNames[slot] ?? slot;
-      parts.push(`- ${name}：${item ? `${item.name}（${item.grade}）` : '无'}`);
+      if (item) {
+        const durText = ` 耐久: ${item.durability}/${item.maxDurability}`;
+        const brokenTag = item.durability <= 0 ? ' **[已损坏]**' : '';
+        const statsText = item.stats
+          ? Object.entries(item.stats)
+              .filter(([, v]) => v && v > 0)
+              .map(([k, v]) => `${k}+${v}`)
+              .join(' ')
+          : '';
+        parts.push(
+          `- ${name}：${item.name}（${item.grade}）${durText}${brokenTag}\n  属性: ${statsText || '无'}`
+        );
+      } else {
+        parts.push(`- ${name}：无`);
+      }
     }
 
     // 功法
@@ -338,7 +378,12 @@ export class GameEngine {
     } else {
       for (const item of inventory) {
         const qty = item.stackable ? ` x${item.quantity}` : '';
-        parts.push(`- ${item.name}${qty} — ${item.description}`);
+        const equipTag = item.type === 'equipment' ? ' `[可装备]`' : '';
+        const durInfo =
+          item.type === 'equipment' && item.durability !== undefined
+            ? ` [耐久:${item.durability}/${item.maxDurability}]`
+            : '';
+        parts.push(`- ${item.name}${qty}${equipTag}${durInfo} — ${item.description}`);
       }
     }
 
@@ -416,6 +461,172 @@ export class GameEngine {
     };
   }
 
+  // ---- Phase 6: 装备/物品/交易命令 ----
+
+  private cmdEquip(arg: string): CommandResult {
+    if (!arg) {
+      const equippable = EquipmentService.getEquippableItems(this.state);
+      if (equippable.length === 0) {
+        return { type: 'error', message: '背包中没有可装备的物品。' };
+      }
+      const list = equippable.map((e) => `- ${e.name} → ${slotNameCn(e.slot)}`).join('\n');
+      return {
+        type: 'narrative_append',
+        message: `\n\n可装备的物品：\n${list}\n\n用法：/equip <物品名称>`,
+      };
+    }
+
+    const result = EquipmentService.equipItem(this.state, arg);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+    this.applyEvents(result.events);
+    return { type: 'narrative_append', message: `\n\n*装备成功！*` };
+  }
+
+  private cmdUnequip(arg: string): CommandResult {
+    if (!arg) {
+      return {
+        type: 'error',
+        message:
+          '请指定要卸下的槽位：weapon（武器）/ armor（护甲）/ treasure（法宝）/ accessory（饰品）',
+      };
+    }
+    const result = EquipmentService.unequipItem(this.state, arg);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+    this.applyEvents(result.events);
+    return { type: 'narrative_append', message: `\n\n*已卸下装备。*` };
+  }
+
+  private cmdUse(arg: string): CommandResult {
+    if (!arg) {
+      return { type: 'error', message: '请指定要使用的物品名称。用法：/use <物品名称>' };
+    }
+    const result = ItemService.useItem(this.state, arg);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+    this.applyEvents(result.events);
+    const narrative = result.events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+    return { type: 'narrative_append', message: `\n\n${narrative}` };
+  }
+
+  private cmdShop(): CommandResult {
+    const merchants = ShopService.getMerchantNpcs(this.state);
+    if (merchants.length === 0) {
+      return { type: 'error', message: '当前位置没有商人。' };
+    }
+
+    const parts: string[] = ['\n\n## 商店'];
+    for (const npc of merchants) {
+      parts.push(`\n### ${npc.name}（${npc.attitude === 'friendly' ? '友好' : '中立'}）`);
+      const items = ShopService.getShopItems(this.state, npc.id);
+      if (items.length === 0) {
+        parts.push('（暂无商品）');
+      } else {
+        for (const item of items) {
+          const buyPrice = ShopService.calculateBuyPrice(item, npc.attitude);
+          parts.push(`- ${item.name} — ${buyPrice} 灵石 — ${item.description}`);
+        }
+      }
+      parts.push(`\n用法：/buy <物品名称> [数量] | /sell <物品名称> [数量]`);
+    }
+
+    return { type: 'narrative_append', message: parts.join('\n') };
+  }
+
+  private cmdBuy(arg: string): CommandResult {
+    if (!arg) {
+      return { type: 'error', message: '请指定要购买的物品。用法：/buy <物品名称> [数量]' };
+    }
+
+    const parts = arg.split(/\s+/);
+    const qty = parts.length > 1 ? parseInt(parts[1]!, 10) || 1 : 1;
+    const itemName = parts[0]!;
+
+    const merchants = ShopService.getMerchantNpcs(this.state);
+    if (merchants.length === 0) {
+      return { type: 'error', message: '当前位置没有商人。' };
+    }
+
+    for (const npc of merchants) {
+      const result = ShopService.buyItem(this.state, npc.id, itemName, qty);
+      if (!result.error) {
+        this.applyEvents(result.events);
+        const narrative = result.events
+          .filter((e) => e.type === 'narrative')
+          .map((e) => (e as { text: string }).text)
+          .join('\n');
+        return { type: 'narrative_append', message: `\n\n${narrative}` };
+      }
+      if (result.error.includes('不是商人') || result.error.includes('找不到商人')) {
+        continue;
+      }
+      return { type: 'error', message: result.error };
+    }
+
+    return { type: 'error', message: `当前位置的商人不出售 "${itemName}"。` };
+  }
+
+  private cmdSell(arg: string): CommandResult {
+    if (!arg) {
+      return { type: 'error', message: '请指定要出售的物品。用法：/sell <物品名称> [数量]' };
+    }
+
+    const parts = arg.split(/\s+/);
+    const qty = parts.length > 1 ? parseInt(parts[1]!, 10) || 1 : 1;
+    const itemName = parts[0]!;
+
+    const merchants = ShopService.getMerchantNpcs(this.state);
+    if (merchants.length === 0) {
+      return { type: 'error', message: '当前位置没有商人。' };
+    }
+
+    for (const npc of merchants) {
+      const result = ShopService.sellItem(this.state, npc.id, itemName, qty);
+      if (!result.error) {
+        this.applyEvents(result.events);
+        const narrative = result.events
+          .filter((e) => e.type === 'narrative')
+          .map((e) => (e as { text: string }).text)
+          .join('\n');
+        return { type: 'narrative_append', message: `\n\n${narrative}` };
+      }
+      if (result.error.includes('不是商人') || result.error.includes('找不到商人')) {
+        continue;
+      }
+      return { type: 'error', message: result.error };
+    }
+
+    return { type: 'error', message: '出售失败。请使用 /shop 查看商人。' };
+  }
+
+  private cmdRepair(arg: string): CommandResult {
+    if (!arg) {
+      return {
+        type: 'error',
+        message: '请指定要修理的装备槽位：weapon / armor / treasure / accessory',
+      };
+    }
+    const result = EquipmentService.repairEquipment(this.state, arg);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+    this.applyEvents(result.events);
+    const narrative = result.events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+    return { type: 'narrative_append', message: `\n\n${narrative}` };
+  }
+
+  // ---- 存档 ----
+
   private cmdSave(slotArg: string): CommandResult {
     const slot = slotArg || 'auto';
     const result = saveGame(this.state, slot);
@@ -463,6 +674,13 @@ export class GameEngine {
 | /inventory | 查看背包和装备 |
 | /move <地点> | 移动到相邻地点 |
 | /cultivate [回合] | 主动修炼（默认1周天，最多10） |
+| /equip <物品> | 装备武器/护甲/法宝/饰品 |
+| /unequip <槽位> | 卸下装备（weapon/armor/treasure/accessory） |
+| /use <物品> | 使用消耗品 |
+| /shop | 查看当前地点商人商品 |
+| /buy <物品> [数量] | 从商人处购买物品 |
+| /sell <物品> [数量] | 向商人出售物品 |
+| /repair <槽位> | 消耗灵石修理损坏的装备 |
 | /save [槽位] | 保存游戏 |
 | /load [槽位] | 读取存档 |
 | /help | 显示此帮助 |
@@ -913,6 +1131,25 @@ export class GameEngine {
 
   private applyEvents(events: GameEvent[]): void {
     this.state = applyEvents(this.state, events);
+
+    // combat_end 后自动消耗装备耐久
+    const hasCombatEnd = events.some((e) => e.type === 'combat_end');
+    if (hasCombatEnd) {
+      for (const slot of ['weapon', 'armor', 'treasure', 'accessory'] as const) {
+        const eq = this.state.player.equipment[slot];
+        if (eq && eq.durability > 0) {
+          const degradeAmount = Math.floor(Math.random() * 5) + 1;
+          const degraded = EquipmentService.degradeEquipment(eq, degradeAmount);
+          this.state.player.equipment[slot] = degraded;
+          if (degraded.durability <= 0) {
+            this.appendNarrative(
+              `\n\n*（${eq.name} 耐久归零，已损坏。请使用 /repair ${slot} 修理。）*`
+            );
+          }
+        }
+      }
+    }
+
     this.callbacks.onStateUpdate(this.state);
   }
 
@@ -932,4 +1169,16 @@ export class GameEngine {
     }
     this.callbacks.onProcessingEnd();
   }
+}
+
+// ==================== 辅助函数 ====================
+
+function slotNameCn(slot: string): string {
+  const map: Record<string, string> = {
+    weapon: '武器',
+    armor: '护甲',
+    treasure: '法宝',
+    accessory: '饰品',
+  };
+  return map[slot] ?? slot;
 }

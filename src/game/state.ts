@@ -1,5 +1,6 @@
 import type {
   CoreStats,
+  Equipment,
   EquipmentSlot,
   GameDifficulty,
   GameEvent,
@@ -224,8 +225,7 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
       if (event.target === 'player') {
         targetStats = next.player.stats as unknown as Record<string, number>;
       } else if (event.target === 'pet') {
-        targetStats = next.pets.find((p) => p.id === event.petId)?.stats as
-          | unknown as
+        targetStats = next.pets.find((p) => p.id === event.petId)?.stats as unknown as
           | Record<string, number>
           | undefined;
       } else if (event.target === 'enemy' && next.combat) {
@@ -315,7 +315,7 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
       next.player.equipment[event.slot] = event.item;
       // If old item exists, return to inventory
       if (oldItem) {
-        next.inventory.push({ ...oldItem, type: 'equipment' } as unknown as GameItem);
+        next.inventory.push(equipmentToGameItem(oldItem));
       }
       // Remove new item from inventory if it was there
       if (event.item) {
@@ -488,6 +488,79 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
  */
 export function applyEvents(state: GameState, events: GameEvent[]): GameState {
   return events.reduce((s, e) => gameReducer(s, e), state);
+}
+
+// ==================== 装备辅助函数 ====================
+
+/** 将 Equipment 转换为可存入背包的 GameItem */
+export function equipmentToGameItem(equipment: Equipment): GameItem {
+  return {
+    id: equipment.id,
+    name: equipment.name,
+    type: 'equipment',
+    subtype: equipment.subtype,
+    description: equipment.description,
+    quantity: 1,
+    effects: [],
+    value: Math.round(
+      equipment.realmRequirement * 5 +
+        (['凡品', '灵品', '宝品', '仙品', '神品'].indexOf(equipment.grade) + 1) * 20 +
+        equipment.specialEffects.length * 15
+    ),
+    stackable: false,
+    maxStack: 1,
+    slot: equipment.slot,
+    grade: equipment.grade,
+    realmRequirement: equipment.realmRequirement,
+    durability: equipment.durability,
+    maxDurability: equipment.maxDurability,
+    equipStats: { ...equipment.stats },
+    specialEffects: [...equipment.specialEffects],
+  };
+}
+
+/** 计算装备被动效果加成（修炼速度等） */
+export function calculatePassiveEffects(equipment: Record<EquipmentSlot, Equipment | null>): {
+  cultivationBonus: number;
+  combatBonus: number;
+  defenseBonus: number;
+} {
+  let cultivationBonus = 0;
+  let combatBonus = 0;
+  let defenseBonus = 0;
+
+  for (const eq of Object.values(equipment)) {
+    if (!eq || eq.durability <= 0) continue;
+    for (const effect of eq.specialEffects) {
+      switch (effect.trigger) {
+        case 'on_cultivate':
+          cultivationBonus += effect.value;
+          break;
+        case 'passive':
+          // passive 效果根据 effect 描述判断类型
+          if (
+            effect.effect.includes('修炼') ||
+            effect.effect.includes('悟道') ||
+            effect.effect.includes('共鸣')
+          ) {
+            cultivationBonus += effect.value;
+          } else if (
+            effect.effect.includes('防御') ||
+            effect.effect.includes('护体') ||
+            effect.effect.includes('护盾')
+          ) {
+            defenseBonus += effect.value;
+          } else {
+            combatBonus += effect.value;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return { cultivationBonus, combatBonus, defenseBonus };
 }
 
 // ==================== 装备属性计算 ====================

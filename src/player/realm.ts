@@ -4,7 +4,7 @@
 // ============================================================
 
 import * as Events from '../game/events';
-import { getRealmFromProgress, REALM_DEFINITIONS } from '../game/state';
+import { calculatePassiveEffects, getRealmFromProgress, REALM_DEFINITIONS } from '../game/state';
 import type { GameEvent, GameState, RealmName, SubStage } from '../game/types';
 
 // ==================== 突破检查结果 ====================
@@ -263,12 +263,17 @@ export function calculateCultivationSpeed(state: GameState): CultivationSpeed {
   // 天赋加成
   const talentBonus = state.player.flags['natural_spirit_root'] ? 0.2 * baseRate : 0;
 
-  const total = Math.max(1, baseRate + locationBonus + talentBonus);
+  // 装备被动修炼加成
+  const passiveEffects = calculatePassiveEffects(state.player.equipment);
+  const equipBonus = passiveEffects.cultivationBonus;
+
+  const total = Math.max(1, baseRate + locationBonus + talentBonus + equipBonus);
 
   const parts: string[] = [`基础: ${baseRate.toFixed(1)}`];
   if (locationBonus !== 0)
     parts.push(`位置: ${locationBonus > 0 ? '+' : ''}${locationBonus.toFixed(1)}`);
   if (talentBonus > 0) parts.push(`灵根天赋: +${talentBonus.toFixed(1)}`);
+  if (equipBonus > 0) parts.push(`装备加成: +${equipBonus.toFixed(1)}`);
 
   return {
     baseRate,

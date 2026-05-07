@@ -73,6 +73,45 @@ ${buildRealmDescriptions()}
 - 安全区（苍梧城、青云宗外门）通常不触发遭遇
 - Boss 战难度较高，建议在叙事中给玩家预警
 
+## 装备系统
+
+玩家有四个装备槽：**武器(weapon)**、**护甲(armor)**、**法宝(treasure)**、**饰品(accessory)**。
+装备提供属性加成和特殊效果。装备有境界需求（realmRequirement 对应 progressIndex），境界不足无法装备。
+装备有耐久度（durability/maxDurability），战斗后会损耗。耐久归零后装备效果失效但仍可修理恢复。
+
+当你给予玩家装备时，使用 item_add 事件，item 的 type 设为 "equipment"，并包含：
+- slot: "weapon" | "armor" | "treasure" | "accessory" — 装备槽位
+- grade: "凡品" | "灵品" | "宝品" | "仙品" | "神品" — 品质等级
+- equipStats: { hp?, maxHp?, qi?, maxQi?, stamina?, maxStamina?, willpower? } — 属性加成
+- realmRequirement: 境界需求（progressIndex 数值）
+- specialEffects: 特殊效果数组，每项包含 trigger/effect/value
+
+装备的特殊效果类型：
+- on_attack: 攻击时触发（你在战斗叙事中应描述此效果，如"紫电飞剑的雷电之力附加在你的攻击上"）
+- on_defend: 防御时触发（你在叙事中描述防御效果）
+- on_cultivate: 修炼时触发（系统自动计算加成，你可以在修炼叙事中提及）
+- passive: 常驻被动效果（你在相关场景中描述）
+
+如果你想让玩家自动装备获得的物品，可以使用 equipment_change 事件，传入 slot 和 itemId（装备ID）。
+传入 itemId 为 null 表示卸下该槽位装备。
+
+## 物品使用系统
+
+玩家可以使用消耗品（type 为 "consumable" 的物品）。消耗品有 effects 数组定义其使用效果。
+当你描述玩家使用物品时，使用 item_use 事件并传入 itemId。
+物品使用效果（回复生命、灵力、体力等）由系统自动处理，你只需发出 item_use 事件即可。
+移出物品时使用 item_remove 事件（如任务交付物品）。
+
+## 交易系统
+
+部分 NPC 是商人（role: "merchant"），可以与玩家交易。
+当你描述交易场景时，使用 trade 事件来实际交换物品和灵石：
+- bought: 玩家买到的物品数组
+- sold: 玩家卖出的物品数组
+- spiritStonesChange: 灵石变化（负数表示玩家花费）
+
+不要直接用 narrative 文本描述交易结果而不发出 trade 事件。
+
 ## 叙事风格
 
 使用**古风白话文**——介于文言文和现代汉语之间：
@@ -89,7 +128,9 @@ narrative 事件的 text 字段是你的完整叙事文本。
 不要用文字描述"你获得了X灵石"，而应该同时发出 narrative 事件（描述发现灵石）和 spirit_stones_change 事件（实际修改数值）。
 如果玩家面临重要抉择，在 events 数组之外设置 pending_decision 字段。
 玩家在灵气充沛之地修炼时，适时给予 cultivation_gain 事件（每次1-15点为宜）。
-不要使用 realm_advance 事件——突破由游戏系统自动处理。`;
+不要使用 realm_advance 事件——突破由游戏系统自动处理。
+当你需要处理物品使用时，使用 item_use 事件。处理交易时使用 trade 事件。
+移除物品时使用 item_remove 事件。装备变更时使用 equipment_change 事件。`;
 }
 
 function buildRealmDescriptions(): string {

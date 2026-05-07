@@ -4,7 +4,13 @@
 
 import type { AssistantMessage, ToolCall } from '@mariozechner/pi-ai';
 import { z } from 'zod';
-import type { CoreStats, GameEvent, LLMGameEventOutput, PendingDecision } from '../game/types';
+import type {
+  CoreStats,
+  GameEvent,
+  GameItem,
+  LLMGameEventOutput,
+  PendingDecision,
+} from '../game/types';
 
 // ==================== Zod 校验 Schema ====================
 
@@ -61,7 +67,7 @@ const RawItemAddEventSchema = z.object({
   item: z.object({
     id: z.string(),
     name: z.string(),
-    type: z.enum(['consumable', 'material', 'technique', 'misc']),
+    type: z.enum(['consumable', 'material', 'technique', 'misc', 'equipment']),
     subtype: z.string(),
     description: z.string(),
     quantity: z.number(),
@@ -69,7 +75,86 @@ const RawItemAddEventSchema = z.object({
     value: z.number(),
     stackable: z.boolean(),
     maxStack: z.number(),
+    slot: z.enum(['weapon', 'armor', 'treasure', 'accessory']).optional(),
+    grade: z.enum(['凡品', '灵品', '宝品', '仙品', '神品']).optional(),
+    equipStats: z
+      .object({
+        hp: z.number().optional(),
+        maxHp: z.number().optional(),
+        qi: z.number().optional(),
+        maxQi: z.number().optional(),
+        stamina: z.number().optional(),
+        maxStamina: z.number().optional(),
+        willpower: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    realmRequirement: z.number().optional(),
+    durability: z.number().optional(),
+    maxDurability: z.number().optional(),
+    specialEffects: z
+      .array(
+        z.object({
+          trigger: z.enum(['on_attack', 'on_defend', 'on_cultivate', 'passive']),
+          effect: z.string(),
+          value: z.number(),
+        })
+      )
+      .optional(),
   }),
+});
+
+// Phase 6 新增事件 Schema
+
+const RawItemUseEventSchema = z.object({
+  type: z.literal('item_use'),
+  itemId: z.string(),
+  effects: z.array(ItemEffectSchema),
+});
+
+const RawItemRemoveEventSchema = z.object({
+  type: z.literal('item_remove'),
+  itemId: z.string(),
+  quantity: z.number(),
+});
+
+const RawEquipmentChangeEventSchema = z.object({
+  type: z.literal('equipment_change'),
+  slot: z.enum(['weapon', 'armor', 'treasure', 'accessory']),
+  itemId: z.string().optional(),
+});
+
+const RawTradeEventSchema = z.object({
+  type: z.literal('trade'),
+  bought: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      type: z.enum(['consumable', 'material', 'technique', 'misc', 'equipment']),
+      subtype: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      effects: z.array(ItemEffectSchema),
+      value: z.number(),
+      stackable: z.boolean(),
+      maxStack: z.number(),
+    })
+  ),
+  sold: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      type: z.enum(['consumable', 'material', 'technique', 'misc', 'equipment']),
+      subtype: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      effects: z.array(ItemEffectSchema),
+      value: z.number(),
+      stackable: z.boolean(),
+      maxStack: z.number(),
+    })
+  ),
+  spiritStonesChange: z.number(),
 });
 
 const RawSpiritStonesChangeEventSchema = z.object({
@@ -99,6 +184,10 @@ const RawGameEventSchema = z.discriminatedUnion('type', [
   RawNarrativeEventSchema,
   RawStatChangeEventSchema,
   RawItemAddEventSchema,
+  RawItemUseEventSchema,
+  RawItemRemoveEventSchema,
+  RawEquipmentChangeEventSchema,
+  RawTradeEventSchema,
   RawSpiritStonesChangeEventSchema,
   RawDecisionRequiredEventSchema,
   RawCultivationGainEventSchema,
@@ -280,7 +369,7 @@ function rawToGameEvent(raw: z.infer<typeof RawGameEventSchema>): GameEvent | nu
     case 'item_add':
       return {
         type: 'item_add',
-        item: raw.item,
+        item: raw.item as GameItem,
       };
 
     case 'spirit_stones_change':
@@ -315,6 +404,50 @@ function rawToGameEvent(raw: z.infer<typeof RawGameEventSchema>): GameEvent | nu
           ? R
           : never,
         newProgressIndex: raw.newProgressIndex,
+      };
+
+    case 'item_use':
+      return {
+        type: 'item_use',
+        itemId: raw.itemId,
+        effects: raw.effects,
+      };
+
+    case 'item_remove':
+      return {
+        type: 'item_remove',
+        itemId: raw.itemId,
+        quantity: raw.quantity,
+      };
+
+    case 'equipment_change':
+      return {
+        type: 'equipment_change',
+        slot: raw.slot,
+        item: raw.itemId
+          ? {
+              id: raw.itemId,
+              name: raw.itemId,
+              type: 'equipment' as const,
+              slot: raw.slot,
+              subtype: '飞剑' as const,
+              grade: '凡品' as const,
+              stats: {},
+              realmRequirement: 0,
+              durability: 100,
+              maxDurability: 100,
+              specialEffects: [],
+              description: '',
+            }
+          : null,
+      };
+
+    case 'trade':
+      return {
+        type: 'trade',
+        bought: raw.bought,
+        sold: raw.sold,
+        spiritStonesChange: raw.spiritStonesChange,
       };
 
     default:

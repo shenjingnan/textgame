@@ -11,16 +11,32 @@ import {
   getUsableCombatItems,
   processRound,
 } from '../../combat/combat-manager';
-import type { CombatState, Enemy, GameItem, GameState } from '../../game/types';
 import { createInitialState } from '../../game/state';
+import type { CombatState, Enemy, GameItem, GameState } from '../../game/types';
 
 // ==================== 测试数据 ====================
 
 function makeTestState(): GameState {
   const state = createInitialState('测试修士', 'normal', []);
   // Set player to combat-ready stats
-  state.player.stats = { hp: 200, maxHp: 200, qi: 100, maxQi: 100, stamina: 80, maxStamina: 80, willpower: 25 };
-  state.player.baseStats = { hp: 200, maxHp: 200, qi: 100, maxQi: 100, stamina: 80, maxStamina: 80, willpower: 25 };
+  state.player.stats = {
+    hp: 200,
+    maxHp: 200,
+    qi: 100,
+    maxQi: 100,
+    stamina: 80,
+    maxStamina: 80,
+    willpower: 25,
+  };
+  state.player.baseStats = {
+    hp: 200,
+    maxHp: 200,
+    qi: 100,
+    maxQi: 100,
+    stamina: 80,
+    maxStamina: 80,
+    willpower: 25,
+  };
   state.player.realm = { name: '筑基', subStage: '前期', progressIndex: 4, cultivation: 0 };
   return state;
 }
@@ -70,7 +86,9 @@ describe('checkCombatEnd', () => {
 
   it('should return victory when enemy HP is 0', () => {
     const state = makeTestState();
-    const enemy = makeTestEnemy({ stats: { hp: 0, maxHp: 120, qi: 40, maxQi: 40, stamina: 80, maxStamina: 80, willpower: 15 } });
+    const enemy = makeTestEnemy({
+      stats: { hp: 0, maxHp: 120, qi: 40, maxQi: 40, stamina: 80, maxStamina: 80, willpower: 15 },
+    });
     state.combat = makeCombatState(enemy);
     expect(checkCombatEnd(state)).toBe('victory');
   });
@@ -194,13 +212,15 @@ describe('decideEnemyAction', () => {
   it('should use skill for aggressive enemy when roll is low', () => {
     const enemy = makeTestEnemy({
       behavior: 'aggressive',
-      skills: [{
-        name: '咆哮',
-        qiCost: 0,
-        staminaCost: 10,
-        damageMultiplier: 1.3,
-        description: '发出一声咆哮',
-      }],
+      skills: [
+        {
+          name: '咆哮',
+          qiCost: 0,
+          staminaCost: 10,
+          damageMultiplier: 1.3,
+          description: '发出一声咆哮',
+        },
+      ],
     });
     const action = decideEnemyAction(enemy, () => 0.1);
     expect(action.type).toBe('attack');
