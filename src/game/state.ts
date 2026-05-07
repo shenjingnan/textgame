@@ -225,8 +225,7 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
       if (event.target === 'player') {
         targetStats = next.player.stats as unknown as Record<string, number>;
       } else if (event.target === 'pet') {
-        targetStats = next.pets.find((p) => p.id === event.petId)?.stats as
-          | unknown as
+        targetStats = next.pets.find((p) => p.id === event.petId)?.stats as unknown as
           | Record<string, number>
           | undefined;
       } else if (event.target === 'enemy' && next.combat) {

@@ -3,9 +3,6 @@
 // ============================================================
 
 import type { AssistantMessageEventStream, ToolCall } from '@mariozechner/pi-ai';
-import * as EquipmentService from '../inventory/equipment-service';
-import * as ItemService from '../inventory/item-service';
-import * as ShopService from '../inventory/shop-service';
 import {
   canFlee,
   canPetAssist,
@@ -14,6 +11,9 @@ import {
 } from '../combat/combat-manager';
 import { quickResolve } from '../combat/combat-resolver';
 import { getEnemyById } from '../combat/enemy-data';
+import * as EquipmentService from '../inventory/equipment-service';
+import * as ItemService from '../inventory/item-service';
+import * as ShopService from '../inventory/shop-service';
 import { GameLLMClient } from '../llm/client';
 import { ContextManager } from '../llm/context-manager';
 import {

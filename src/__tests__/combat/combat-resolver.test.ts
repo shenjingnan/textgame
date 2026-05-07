@@ -15,8 +15,8 @@ import {
   quickResolve,
   rollCrit,
 } from '../../combat/combat-resolver';
-import type { CombatSkill, Enemy, GameState } from '../../game/types';
 import { createInitialState } from '../../game/state';
+import type { CombatSkill, Enemy, GameState } from '../../game/types';
 
 // ==================== 测试数据 ====================
 
@@ -113,7 +113,16 @@ describe('calcPlayerDamage', () => {
   const rng = () => 0.5;
 
   it('should calculate basic attack damage', () => {
-    const result = calcPlayerDamage(50, 10, '测试狼', 'attack', undefined, undefined, undefined, rng);
+    const result = calcPlayerDamage(
+      50,
+      10,
+      '测试狼',
+      'attack',
+      undefined,
+      undefined,
+      undefined,
+      rng
+    );
     expect(result.damage).toBeGreaterThan(0);
     expect(result.isCrit).toBe(false);
     expect(result.narrative).toContain('测试狼');
@@ -122,7 +131,16 @@ describe('calcPlayerDamage', () => {
 
   it('should apply skill damage multiplier', () => {
     const skill = makeTestSkill();
-    const basicResult = calcPlayerDamage(50, 10, '测试狼', 'attack', undefined, undefined, undefined, rng);
+    const basicResult = calcPlayerDamage(
+      50,
+      10,
+      '测试狼',
+      'attack',
+      undefined,
+      undefined,
+      undefined,
+      rng
+    );
     const skillResult = calcPlayerDamage(50, 10, '测试狼', 'skill', skill, 100, 100, rng);
     expect(skillResult.damage).toBeGreaterThan(basicResult.damage);
     expect(skillResult.cost).toEqual({ qi: 10, stamina: 5 });
@@ -145,13 +163,31 @@ describe('calcPlayerDamage', () => {
   });
 
   it('should handle crit hits', () => {
-    const result = calcPlayerDamage(100, 0, '测试狼', 'attack', undefined, undefined, undefined, () => 0.01);
+    const result = calcPlayerDamage(
+      100,
+      0,
+      '测试狼',
+      'attack',
+      undefined,
+      undefined,
+      undefined,
+      () => 0.01
+    );
     expect(result.isCrit).toBe(true);
     expect(result.narrative).toContain('暴击');
   });
 
   it('should produce minimum damage of 1', () => {
-    const result = calcPlayerDamage(1, 100, '测试狼', 'attack', undefined, undefined, undefined, () => 0);
+    const result = calcPlayerDamage(
+      1,
+      100,
+      '测试狼',
+      'attack',
+      undefined,
+      undefined,
+      undefined,
+      () => 0
+    );
     expect(result.damage).toBeGreaterThanOrEqual(1);
   });
 });
@@ -207,8 +243,20 @@ describe('calcFlee', () => {
 
 describe('calculateCompositePower', () => {
   it('should return higher power for stronger entities', () => {
-    const weak = calculateCompositePower(0, { hp: 50, maxHp: 50, qi: 30, maxQi: 30, stamina: 40, maxStamina: 40, willpower: 10 }, 20, 5, 0);
-    const strong = calculateCompositePower(4, { hp: 200, maxHp: 200, qi: 100, maxQi: 100, stamina: 80, maxStamina: 80, willpower: 30 }, 50, 20, 10);
+    const weak = calculateCompositePower(
+      0,
+      { hp: 50, maxHp: 50, qi: 30, maxQi: 30, stamina: 40, maxStamina: 40, willpower: 10 },
+      20,
+      5,
+      0
+    );
+    const strong = calculateCompositePower(
+      4,
+      { hp: 200, maxHp: 200, qi: 100, maxQi: 100, stamina: 80, maxStamina: 80, willpower: 30 },
+      50,
+      20,
+      10
+    );
     expect(strong).toBeGreaterThan(weak);
   });
 });
@@ -220,7 +268,15 @@ describe('quickResolve', () => {
     // Player at 金丹期 should easily beat 炼气 enemy
     const state = makeTestState();
     state.player.realm = { name: '金丹', subStage: '前期', progressIndex: 8, cultivation: 0 };
-    state.player.stats = { hp: 300, maxHp: 300, qi: 450, maxQi: 450, stamina: 120, maxStamina: 120, willpower: 50 };
+    state.player.stats = {
+      hp: 300,
+      maxHp: 300,
+      qi: 450,
+      maxQi: 450,
+      stamina: 120,
+      maxStamina: 120,
+      willpower: 50,
+    };
     state.player.baseStats = { ...state.player.stats };
 
     const enemy = makeTestEnemy();
@@ -237,7 +293,15 @@ describe('quickResolve', () => {
     // Player at 炼气前期 vs 金丹 enemy
     const enemy = makeTestEnemy({
       realm: { name: '金丹', subStage: '前期', progressIndex: 8, cultivation: 0 },
-      stats: { hp: 500, maxHp: 500, qi: 300, maxQi: 300, stamina: 200, maxStamina: 200, willpower: 50 },
+      stats: {
+        hp: 500,
+        maxHp: 500,
+        qi: 300,
+        maxQi: 300,
+        stamina: 200,
+        maxStamina: 200,
+        willpower: 50,
+      },
       attack: 70,
       defense: 30,
     });
@@ -295,8 +359,12 @@ describe('calcExperience', () => {
   });
 
   it('should scale with realm index', () => {
-    const lowRealm = makeTestEnemy({ realm: { name: '炼气', subStage: '前期', progressIndex: 0, cultivation: 0 } });
-    const highRealm = makeTestEnemy({ realm: { name: '筑基', subStage: '前期', progressIndex: 4, cultivation: 0 } });
+    const lowRealm = makeTestEnemy({
+      realm: { name: '炼气', subStage: '前期', progressIndex: 0, cultivation: 0 },
+    });
+    const highRealm = makeTestEnemy({
+      realm: { name: '筑基', subStage: '前期', progressIndex: 4, cultivation: 0 },
+    });
     expect(calcExperience(highRealm)).toBeGreaterThan(calcExperience(lowRealm));
   });
 });
