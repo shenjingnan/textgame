@@ -1,15 +1,10 @@
 {
-  "name": "ai-typescript-starter",
-  "version": "0.4.5",
-  "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
+  "name": "textgame",
+  "version": "0.1.0",
+  "description": "修仙 CLI 文字 RPG — 基于 LLM 的修仙题材互动文字游戏",
   "type": "module",
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.mts"
-    }
+  "bin": {
+    "textgame": "./dist/cli.mjs"
   },
   "files": [
     "dist"
@@ -20,7 +15,8 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "tsdown --watch",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -45,23 +41,23 @@
   },
   "packageManager": "pnpm@10.30.3",
   "keywords": [
-    "typescript",
-    "ai",
-    "starter",
-    "template",
-    "vitest",
-    "biome",
-    "tsdown"
+    "game",
+    "cultivation",
+    "rpg",
+    "cli",
+    "llm",
+    "text-game"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shenjingnan/ai-typescript-starter.git"
+    "url": "https://github.com/shenjingnan/textgame.git"
   },
-  "bugs": {
-    "url": "https://github.com/shenjingnan/ai-typescript-starter/issues"
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.65.0",
+    "@mariozechner/pi-tui": "^0.65.0",
+    "zod": "^3.24.0"
   },
-  "homepage": "https://github.com/shenjingnan/ai-typescript-starter#readme",
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
     "@release-it/conventional-changelog": "^11.0.0",
@@ -70,8 +66,9 @@
     "cspell": "^10.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "release-it": "^19.2.4",
+    "release-it": "^20.0.1",
     "tsdown": "^0.21.7",
+    "tsx": "^4.19.0",
     "typescript": "^6.0.2",
     "vitest": "^3.2.0"
   },
