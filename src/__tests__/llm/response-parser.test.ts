@@ -306,8 +306,8 @@ describe('parseStreamResponse', () => {
     const result = parseStreamResponse(message);
 
     expect(result).not.toBeNull();
-    expect(result!.events).toHaveLength(1);
-    expect(result!.events[0]?.type).toBe('narrative');
+    expect(result?.events).toHaveLength(1);
+    expect(result?.events[0]?.type).toBe('narrative');
   });
 
   it('should fall back to text content when no tool call', () => {
@@ -316,12 +316,12 @@ describe('parseStreamResponse', () => {
     const result = parseStreamResponse(message);
 
     expect(result).not.toBeNull();
-    expect(result!.events).toHaveLength(1);
-    expect(result!.events[0]?.type).toBe('narrative');
-    if (result!.events[0]?.type === 'narrative') {
-      expect(result!.events[0].text).toBe('苍梧山脉绵延三千里，灵气充沛。');
+    expect(result?.events).toHaveLength(1);
+    expect(result?.events[0]?.type).toBe('narrative');
+    if (result?.events[0]?.type === 'narrative') {
+      expect(result?.events[0].text).toBe('苍梧山脉绵延三千里，灵气充沛。');
     }
-    expect(result!.pending_decision).toBeNull();
+    expect(result?.pending_decision).toBeNull();
   });
 
   it('should return null for empty assistant message', () => {
@@ -345,9 +345,9 @@ describe('parseStreamResponse', () => {
     const result = parseStreamResponse(message);
 
     expect(result).not.toBeNull();
-    expect(result!.events[0]?.type).toBe('narrative');
-    if (result!.events[0]?.type === 'narrative') {
-      expect(result!.events[0].text).toBe('正确的事件');
+    expect(result?.events[0]?.type).toBe('narrative');
+    if (result?.events[0]?.type === 'narrative') {
+      expect(result?.events[0].text).toBe('正确的事件');
     }
   });
 });

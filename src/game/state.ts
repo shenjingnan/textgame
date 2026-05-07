@@ -5,9 +5,11 @@ import type {
   GameEvent,
   GameItem,
   GameState,
+  Location,
   Realm,
   RealmDefinition,
   RealmName,
+  Region,
 } from './types';
 
 // ==================== 境界定义表 ====================
@@ -140,7 +142,8 @@ export function calculateBaseStats(realmIndex: number, difficulty: GameDifficult
 
 export function createInitialState(
   playerName: string,
-  difficulty: GameDifficulty = 'normal'
+  difficulty: GameDifficulty = 'normal',
+  worldData?: Region[]
 ): GameState {
   const now = Date.now();
   const initialRealm: Realm = {
@@ -173,7 +176,7 @@ export function createInitialState(
     activePetId: null,
     combat: null,
     world: {
-      regions: [],
+      regions: worldData ?? [],
       currentLocationId: 'cangwu_city',
     },
     narrative: {
@@ -517,4 +520,13 @@ export function validateState(state: unknown): GameState {
     throw new Error('Invalid game state: missing player');
   }
   return state as GameState;
+}
+
+// ==================== 位置辅助 ====================
+
+/** 获取当前所在地点 */
+export function getCurrentLocation(state: GameState): Location | undefined {
+  return state.world.regions
+    .flatMap((r) => r.locations)
+    .find((l) => l.id === state.world.currentLocationId);
 }

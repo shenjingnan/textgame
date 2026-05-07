@@ -51,6 +51,7 @@
       "!!**/node_modules",
       "!!**/dist",
       "!!**/coverage",
+      "!!**/.textgame",
       "!!**/*.min.js",
       "!!**/.husky"
     ]

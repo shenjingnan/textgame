@@ -30,11 +30,19 @@ import {
   calculateEffectiveStats,
   createInitialState,
   gameReducer,
+  getCurrentLocation,
   getRealmFromProgress,
   getRealmProgressIndex,
   REALM_DEFINITIONS,
 } from '../../game/state';
-import type { CoreStats, Equipment, EquipmentSlot, GameState, SpiritPet } from '../../game/types';
+import type {
+  CoreStats,
+  Equipment,
+  EquipmentSlot,
+  GameState,
+  Region,
+  SpiritPet,
+} from '../../game/types';
 
 // ==================== 辅助函数 ====================
 
@@ -108,6 +116,74 @@ describe('createInitialState', () => {
     // Normal should be between
     expect(normalState.player.stats.maxHp).toBeGreaterThan(hardState.player.stats.maxHp);
     expect(normalState.player.stats.maxHp).toBeLessThan(easyState.player.stats.maxHp);
+  });
+
+  it('should accept worldData parameter and populate regions', () => {
+    const mockRegion: Region = {
+      name: 'Test Region',
+      description: 'Test',
+      locations: [
+        {
+          id: 'test_location',
+          name: 'Test Location',
+          region: 'Test Region',
+          type: 'city',
+          dangerLevel: 1,
+          realmSuitability: 0,
+          connections: [],
+          npcs: [],
+          description: 'Test location description',
+        },
+      ],
+      dominantFaction: '',
+      realmRange: [0, 8],
+    };
+
+    const state = createInitialState('测试', 'normal', [mockRegion]);
+    expect(state.world.regions).toHaveLength(1);
+    expect(state.world.regions[0]?.locations[0]?.id).toBe('test_location');
+  });
+
+  it('should have empty regions when worldData not provided (backwards compat)', () => {
+    const state = createInitialState('测试', 'normal');
+    expect(state.world.regions).toEqual([]);
+  });
+});
+
+describe('getCurrentLocation', () => {
+  it('should return location matching currentLocationId', () => {
+    const mockRegion: Region = {
+      name: 'Test',
+      description: '',
+      locations: [
+        {
+          id: 'current_loc',
+          name: 'Current',
+          region: 'Test',
+          type: 'city',
+          dangerLevel: 1,
+          realmSuitability: 0,
+          connections: [],
+          npcs: [],
+          description: 'Current location',
+        },
+      ],
+      dominantFaction: '',
+      realmRange: [0, 0],
+    };
+
+    const state = createInitialState('测试', 'normal', [mockRegion]);
+    state.world.currentLocationId = 'current_loc';
+
+    const loc = getCurrentLocation(state);
+    expect(loc).toBeDefined();
+    expect(loc?.id).toBe('current_loc');
+  });
+
+  it('should return undefined when location not found', () => {
+    const state = createInitialState('测试', 'normal');
+    state.world.currentLocationId = 'nonexistent';
+    expect(getCurrentLocation(state)).toBeUndefined();
   });
 });
 
@@ -426,14 +502,14 @@ describe('gameReducer', () => {
       let next = gameReducer(state, petObtain(pet));
       const obtainedPet = next.pets[0];
       expect(obtainedPet).toBeDefined();
-      const oldHp = obtainedPet!.stats.hp;
+      const oldHp = obtainedPet?.stats.hp ?? 0;
       next = gameReducer(next, petEvolve('spirit_fox', 1, 'divine'));
 
       const evolvedPet = next.pets[0];
       expect(evolvedPet).toBeDefined();
-      expect(evolvedPet!.evolutionStage).toBe(1);
-      expect(evolvedPet!.evolutionPath).toBe('divine');
-      expect(evolvedPet!.stats.hp).toBeGreaterThan(oldHp);
+      expect(evolvedPet?.evolutionStage).toBe(1);
+      expect(evolvedPet?.evolutionPath).toBe('divine');
+      expect(evolvedPet?.stats.hp).toBeGreaterThan(oldHp);
     });
   });
 

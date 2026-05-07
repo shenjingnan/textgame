@@ -4,7 +4,7 @@
 
 import type { Context } from '@mariozechner/pi-ai';
 import { REALM_DEFINITIONS } from '../game/state';
-import type { GameState } from '../game/types';
+import type { GameState, Location } from '../game/types';
 import { EMIT_EVENTS_TOOL } from './schemas';
 
 // ==================== 系统提示词 ====================
@@ -95,9 +95,29 @@ export function buildStatusSummary(state: GameState): string {
 
 // ==================== 探索上下文 ====================
 
-export function buildExplorationMessage(_state: GameState, userInput: string): string {
+/** 根据位置信息构建位置描述文本 */
+export function buildLocationContext(location: Location): string {
+  const npcList = location.npcs
+    .map((n) => `- ${n.name}（${n.role}，${n.realm.name}${n.realm.subStage}，${n.attitude}）`)
+    .join('\n');
+  return `位置：${location.name}（${location.type}，危险等级 ${location.dangerLevel}）
+描述：${location.description}
+在场人物：${npcList || '无'}
+可前往：${location.connections.join('、') || '无'}`;
+}
+
+export function buildExplorationMessage(
+  _state: GameState,
+  userInput: string,
+  locationInfo?: string
+): string {
   const summary = buildStatusSummary(_state);
-  return `${summary}\n\n玩家行动：${userInput}`;
+  const parts = [summary];
+  if (locationInfo) {
+    parts.push(`\n[当前位置信息]\n${locationInfo}`);
+  }
+  parts.push(`\n玩家行动：${userInput}`);
+  return parts.join('\n');
 }
 
 // ==================== Context 构建 ====================
