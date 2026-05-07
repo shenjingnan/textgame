@@ -23,6 +23,14 @@ import {
   buildSystemPrompt,
 } from '../llm/prompt-builder';
 import { parseStreamResponse } from '../llm/response-parser';
+import {
+  attemptPetEvolution,
+  feedPet,
+  getActivePet,
+  getAvailablePetSkills,
+  getPetByQuery,
+  interactWithPet,
+} from '../pet/pet-service';
 import type { PlayerOrigin, PlayerTalent } from '../player/player';
 import {
   buildConfirmDecision,
@@ -94,7 +102,7 @@ const WELCOME_TEXT = `
 
 特殊命令：**/status** 查看状态 | **/look** 观察周围 | **/inventory** 背包
 **/move <地点>** 移动 | **/equip <物品>** 装备 | **/use <物品>** 使用
-**/shop** 商店 | **/buy <物品>** 购买 | **/sell <物品>** 出售
+**/pet** 灵宠 | **/shop** 商店 | **/buy <物品>** 购买 | **/sell <物品>** 出售
 **/save** 存档 | **/load** 读档 | **/help** 帮助 | **/quit** 退出
 `.trim();
 
@@ -275,6 +283,9 @@ export class GameEngine {
 
       case '/repair':
         return this.cmdRepair(arg);
+
+      case '/pet':
+        return this.cmdPet(arg);
 
       case '/save':
         return this.cmdSave(arg);
@@ -617,6 +628,239 @@ export class GameEngine {
     if (result.error) {
       return { type: 'error', message: result.error };
     }
+    this.applyEvents(result.events);
+    const narrative = result.events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+    return { type: 'narrative_append', message: `\n\n${narrative}` };
+  }
+
+  // ---- 灵宠 ----
+
+  private cmdPet(arg: string): CommandResult {
+    const parts = arg.split(/\s+/);
+    const subCmd = parts[0]?.toLowerCase();
+    const subArg = parts.slice(1).join(' ');
+
+    if (!subCmd) {
+      return this.cmdPetDetail();
+    }
+
+    switch (subCmd) {
+      case 'list':
+        return this.cmdPetList();
+      case 'feed':
+        return this.cmdPetFeed(subArg);
+      case 'interact':
+        return this.cmdPetInteract();
+      case 'activate':
+        return this.cmdPetActivate(subArg);
+      case 'release':
+        return this.cmdPetRelease(subArg);
+      case 'evolve':
+        return this.cmdPetEvolve();
+      default:
+        // 尝试作为宠物名称/ID 查询
+        return this.cmdPetDetail(subCmd);
+    }
+  }
+
+  private cmdPetDetail(query?: string): CommandResult {
+    const pet = query ? getPetByQuery(this.state, query) : getActivePet(this.state);
+    if (!pet) {
+      return {
+        type: 'error',
+        message: query
+          ? `找不到名为 "${query}" 的灵宠。`
+          : '你还没有出战灵宠。使用 /pet list 查看所有灵宠，/pet activate <名称> 切换出战。',
+      };
+    }
+
+    const pathLabel =
+      pet.evolutionPath === 'divine' ? '神圣' : pet.evolutionPath === 'demonic' ? '魔化' : '普通';
+    const activeTag = pet.id === this.state.activePetId ? ' [出战]' : '';
+    const availableSkills = getAvailablePetSkills(pet);
+
+    const parts: string[] = [
+      `\n\n## ${pet.name}（${pet.species}）${activeTag}`,
+      '',
+      `| 属性 | 数值 |`,
+      `|------|------|`,
+      `| 等级 | ${pet.level} |`,
+      `| 生命 | ${pet.stats.hp}/${pet.stats.maxHp} |`,
+      `| 攻击 | ${pet.stats.attack} |`,
+      `| 防御 | ${pet.stats.defense} |`,
+      `| 速度 | ${pet.stats.speed} |`,
+      `| 忠诚 | ${pet.loyalty}/100 |`,
+      `| 进化 | ${pet.evolutionStage}阶 · ${pathLabel}路线 |`,
+      '',
+      `**技能**：`,
+    ];
+
+    for (const skill of pet.skills) {
+      const cdText =
+        skill.currentCooldown > 0
+          ? ` （冷却中：${skill.currentCooldown}/${skill.cooldown}）`
+          : ' （可用）';
+      parts.push(`- **${skill.name}**：${skill.description}${cdText}`);
+    }
+
+    if (availableSkills.length > 0) {
+      parts.push('', `可使用的技能：${availableSkills.map((s) => s.name).join('、')}`);
+    }
+
+    parts.push('', `*${pet.description}*`);
+
+    return { type: 'narrative_append', message: parts.join('\n') };
+  }
+
+  private cmdPetList(): CommandResult {
+    if (this.state.pets.length === 0) {
+      return { type: 'narrative_append', message: '\n\n你还没有任何灵宠。' };
+    }
+
+    const parts: string[] = ['\n\n## 灵宠列表', ''];
+
+    for (const pet of this.state.pets) {
+      const activeTag = pet.id === this.state.activePetId ? ' **[出战]**' : '';
+      const hpRatio = Math.round((pet.stats.hp / pet.stats.maxHp) * 100);
+      parts.push(
+        `- **${pet.name}**（${pet.species}）Lv.${pet.level} 进化${pet.evolutionStage}阶${activeTag}`
+      );
+      parts.push(
+        `  HP:${hpRatio}% | 攻:${pet.stats.attack} 防:${pet.stats.defense} 速:${pet.stats.speed} | 忠诚:${pet.loyalty}`
+      );
+    }
+
+    parts.push(
+      '',
+      '使用 `/pet <名称>` 查看详情 | `/pet activate <名称>` 切换出战 | `/pet feed <物品>` 喂养 | `/pet interact` 互动'
+    );
+
+    return { type: 'narrative_append', message: parts.join('\n') };
+  }
+
+  private cmdPetFeed(itemArg: string): CommandResult {
+    if (!itemArg) {
+      return {
+        type: 'error',
+        message: '请指定要喂食的物品。用法：/pet feed <物品名称>',
+      };
+    }
+
+    const activePet = getActivePet(this.state);
+    if (!activePet) {
+      return { type: 'error', message: '你没有出战灵宠。' };
+    }
+
+    const result = feedPet(this.state, activePet.id, itemArg);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+
+    this.applyEvents(result.events);
+    const narrative = result.events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+    return { type: 'narrative_append', message: `\n\n${narrative}` };
+  }
+
+  private cmdPetInteract(): CommandResult {
+    const activePet = getActivePet(this.state);
+    if (!activePet) {
+      return { type: 'error', message: '你没有出战灵宠。' };
+    }
+
+    const result = interactWithPet(this.state, activePet.id);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+
+    this.applyEvents(result.events);
+    const narrative = result.events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+    return { type: 'narrative_append', message: `\n\n${narrative}` };
+  }
+
+  private cmdPetActivate(arg: string): CommandResult {
+    if (!arg) {
+      return {
+        type: 'error',
+        message: '请指定要出战的灵宠。用法：/pet activate <灵宠名称>',
+      };
+    }
+
+    const pet = getPetByQuery(this.state, arg);
+    if (!pet) {
+      return { type: 'error', message: `找不到名为 "${arg}" 的灵宠。` };
+    }
+
+    if (pet.id === this.state.activePetId) {
+      return {
+        type: 'narrative_append',
+        message: `\n\n${pet.name} 已经是出战灵宠了。`,
+      };
+    }
+
+    const events: GameEvent[] = [
+      Events.petSwitch(pet.id),
+      Events.narrative('system', `${pet.name} 切换为出战灵宠。`),
+    ];
+    this.applyEvents(events);
+    return {
+      type: 'narrative_append',
+      message: `\n\n${pet.name} 现在跟随你出战！`,
+    };
+  }
+
+  private cmdPetRelease(arg: string): CommandResult {
+    if (!arg) {
+      return {
+        type: 'error',
+        message: '请指定要放生的灵宠。用法：/pet release <灵宠名称>',
+      };
+    }
+
+    const pet = getPetByQuery(this.state, arg);
+    if (!pet) {
+      return { type: 'error', message: `找不到名为 "${arg}" 的灵宠。` };
+    }
+
+    const events: GameEvent[] = [
+      Events.petRelease(pet.id),
+      Events.narrative('system', `${pet.name} 回归了自然。你望着它远去的身影，心中感慨万千。`),
+    ];
+    this.applyEvents(events);
+
+    // 降低其他宠物的忠诚度
+    for (const otherPet of this.state.pets) {
+      if (otherPet.id !== pet.id) {
+        this.applyEvents([Events.petInteract(otherPet.id, -5)]);
+      }
+    }
+
+    return {
+      type: 'narrative_append',
+      message:
+        `\n\n${pet.name} 已放生。` + (this.state.pets.length > 0 ? ' 其他灵宠似乎有些不安。' : ''),
+    };
+  }
+
+  private cmdPetEvolve(): CommandResult {
+    const activePet = getActivePet(this.state);
+    if (!activePet) {
+      return { type: 'error', message: '你没有出战灵宠。' };
+    }
+
+    const result = attemptPetEvolution(this.state, activePet.id);
+    if (result.error) {
+      return { type: 'error', message: result.error };
+    }
+
     this.applyEvents(result.events);
     const narrative = result.events
       .filter((e) => e.type === 'narrative')
@@ -1027,6 +1271,19 @@ export class GameEngine {
 
     const combat = this.state.combat;
 
+    // 宠物技能子菜单选择
+    if (choiceId.startsWith('pet_skill_')) {
+      const skillName = choiceId.replace('pet_skill_', '');
+      if (skillName === 'basic') {
+        this.executeCombatRound({ type: 'pet_assist' });
+      } else if (skillName === 'cancel') {
+        this.finishTurn();
+      } else {
+        this.executeCombatRound({ type: 'pet_assist', petSkillName: skillName });
+      }
+      return;
+    }
+
     // 验证选择的合法性
     if (choiceId === 'flee' && !canFlee(combat)) {
       this.appendNarrative('\n\n*Boss 战中无法逃跑！你必须战斗到底！*');
@@ -1041,7 +1298,6 @@ export class GameEngine {
         this.finishTurn();
         return;
       }
-      // 如果有多个物品，显示子菜单；这里简化处理，使用第一个物品
       const firstItem = items[0];
       if (!firstItem) {
         this.appendNarrative('\n\n*你没有可用的战斗物品！*');
@@ -1058,6 +1314,37 @@ export class GameEngine {
         this.appendNarrative('\n\n*你的灵宠无法助战！*');
         this.finishTurn();
         return;
+      }
+      // 检查宠物是否有可用的技能，有则显示子菜单
+      const activePet = this.state.pets.find((p) => p.id === this.state.activePetId);
+      if (activePet) {
+        const availableSkills = getAvailablePetSkills(activePet);
+        if (availableSkills.length > 0) {
+          const choices: import('./types').MenuChoice[] = [];
+          for (const skill of availableSkills) {
+            choices.push({
+              id: `pet_skill_${skill.name}`,
+              label: skill.name,
+              description: `${skill.description}（冷却：${skill.cooldown}回合）`,
+            });
+          }
+          choices.push({
+            id: 'pet_skill_basic',
+            label: '普通攻击',
+            description: '灵宠基础攻击，无需冷却',
+          });
+          choices.push({
+            id: 'pet_skill_cancel',
+            label: '返回',
+            description: '取消灵宠行动，返回战斗菜单',
+          });
+          this.callbacks.onDecisionRequired({
+            type: 'menu',
+            prompt: `选择 ${activePet.name} 的行动：`,
+            choices,
+          });
+          return;
+        }
       }
     }
 

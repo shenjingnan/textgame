@@ -177,6 +177,7 @@ describe('canPetAssist', () => {
     state.activePetId = 'test_pet';
     state.pets.push({
       id: 'test_pet',
+      templateId: 'spirit_fox',
       name: '小白',
       species: '灵狐',
       level: 1,
@@ -340,6 +341,7 @@ describe('processRound', () => {
     state.activePetId = 'test_pet';
     state.pets.push({
       id: 'test_pet',
+      templateId: 'spirit_fox',
       name: '小白',
       species: '灵狐',
       level: 1,

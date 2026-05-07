@@ -467,6 +467,7 @@ describe('gameReducer', () => {
       const state = createTestState();
       const pet: SpiritPet = {
         id: 'spirit_fox',
+        templateId: 'spirit_fox',
         name: '灵狐',
         species: '九尾灵狐',
         level: 1,
@@ -488,6 +489,7 @@ describe('gameReducer', () => {
       const state = createTestState();
       const pet: SpiritPet = {
         id: 'spirit_fox',
+        templateId: 'spirit_fox',
         name: '灵狐',
         species: '九尾灵狐',
         level: 1,
@@ -503,13 +505,16 @@ describe('gameReducer', () => {
       const obtainedPet = next.pets[0];
       expect(obtainedPet).toBeDefined();
       const oldHp = obtainedPet?.stats.hp ?? 0;
-      next = gameReducer(next, petEvolve('spirit_fox', 1, 'divine'));
+      // divine chain for spirit_fox starts at stage 2
+      next = gameReducer(next, petEvolve('spirit_fox', 2, 'divine'));
 
       const evolvedPet = next.pets[0];
       expect(evolvedPet).toBeDefined();
-      expect(evolvedPet?.evolutionStage).toBe(1);
+      expect(evolvedPet?.evolutionStage).toBe(2);
       expect(evolvedPet?.evolutionPath).toBe('divine');
       expect(evolvedPet?.stats.hp).toBeGreaterThan(oldHp);
+      // species name should have changed
+      expect(evolvedPet?.species).toBe('三尾灵狐');
     });
   });
 
