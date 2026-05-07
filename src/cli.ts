@@ -17,7 +17,7 @@ import {
 } from '@mariozechner/pi-tui';
 import type { EngineCallbacks } from './game/engine';
 import { GameEngine } from './game/engine';
-import type { GameState, PendingDecision } from './game/types';
+import type { CombatState, GameState, PendingDecision } from './game/types';
 
 // ==================== ANSI 颜色工具 ====================
 
@@ -106,6 +106,22 @@ function buildBar(current: number, max: number, segments: number): string {
   return '█'.repeat(filled) + '░'.repeat(empty);
 }
 
+function buildCombatPanel(combat: CombatState): string {
+  const { enemy, turn, log } = combat;
+  const enemyHpBar = buildBar(enemy.stats.hp, enemy.stats.maxHp, 20);
+  const playerHpRatio = Math.round((enemy.stats.hp / enemy.stats.maxHp) * 100);
+  const recentLog = log.slice(-3);
+
+  return [
+    style(` ═══ 第 ${turn} 回合 ═══`, colors.bold + colors.yellow),
+    '',
+    `${style('敌方', colors.red + colors.bold)} ${enemy.name} ${style(`${enemy.realm.name}${enemy.realm.subStage}`, colors.dim)}`,
+    `HP ${enemyHpBar} ${enemy.stats.hp}/${enemy.stats.maxHp} (${playerHpRatio}%)`,
+    '',
+    ...recentLog.map((l) => style(` ${l}`, colors.dim)),
+  ].join('\n');
+}
+
 // ==================== TuiGameRunner ====================
 
 class TuiGameRunner {
@@ -115,6 +131,7 @@ class TuiGameRunner {
   // 组件引用
   private statusBar: Text;
   private narrativeView: Markdown;
+  private combatPanel: Text;
   private editor: Editor;
 
   // 叙事文本追踪（用于命令追加）
@@ -134,6 +151,9 @@ class TuiGameRunner {
     // 叙事区
     this.narrativeView = new Markdown('', 1, 1, markdownTheme);
 
+    // 战斗面板（默认空白）
+    this.combatPanel = new Text('', 0, 0);
+
     // 输入区
     this.editor = new Editor(this.tui, editorTheme, { paddingX: 1 });
     this.editor.onSubmit = (text: string) => {
@@ -144,6 +164,8 @@ class TuiGameRunner {
     this.tui.addChild(this.statusBar);
     this.tui.addChild(new Spacer());
     this.tui.addChild(this.narrativeView);
+    this.tui.addChild(new Spacer());
+    this.tui.addChild(this.combatPanel);
     this.tui.addChild(new Spacer());
     this.tui.addChild(this.editor);
     this.tui.setFocus(this.editor);
@@ -158,6 +180,12 @@ class TuiGameRunner {
 
       onStateUpdate: (state: GameState) => {
         this.statusBar.setText(buildStatusLine(state));
+        // 战斗面板更新
+        if (state.combat?.active) {
+          this.combatPanel.setText(buildCombatPanel(state.combat));
+        } else {
+          this.combatPanel.setText('');
+        }
         this.tui.requestRender();
       },
 

@@ -45,6 +45,34 @@ ${buildRealmDescriptions()}
    - 不要使用 realm_advance 事件让玩家跳过突破流程——突破由游戏系统处理
    - 但你可以通过叙事描述修炼场景、灵气波动等
 
+## 遭遇触发规则
+
+当玩家在危险区域探索并遭遇敌人时，使用 flag_set 事件触发战斗：
+- 设置 flag key: "pending_encounter"，value 为敌人ID
+- 在叙事中描述遭遇场景，包含敌人的外观、动作和周围环境
+- 不要手动设置 combat_start 事件——战斗系统会自动接管
+- 小怪（minor）会被自动速杀结算，Boss（boss）会进入回合制战斗
+- 不要在同一个回合设置多个 encounter flag
+
+**可用敌人ID**：
+| ID | 名称 | 类型 | 境界 | 出现区域 |
+|----|------|------|------|---------|
+| shadow_wolf | 影狼 | minor | 炼气后期 | 城外密林 |
+| iron_boar | 铁脊豪猪 | minor | 筑基前期 | 城外密林 |
+| wind_serpent | 风蛇 | minor | 炼气圆满 | 城外密林 |
+| spirit_python | 灵溪蟒 | minor | 筑基中期 | 灵溪谷 |
+| venom_spider | 毒蛛 | minor | 筑基后期 | 灵溪谷 |
+| cave_bat_swarm | 洞蝠群 | minor | 筑基前期 | 废弃矿洞 |
+| stone_demon | 石魔 | boss | 筑基圆满 | 废弃矿洞 |
+| guardian_spirit | 守护灵 | boss | 金丹前期 | 古修洞府 |
+
+**遭遇触发示例**：
+- 玩家在灵溪谷探索 → 可能遭遇灵溪蟒或毒蛛
+- 玩家在废弃矿洞深处 → 可能遭遇洞蝠群，运气不好遇到 Boss 石魔
+- 玩家在城外密林 → 影狼、铁脊豪猪或风蛇
+- 安全区（苍梧城、青云宗外门）通常不触发遭遇
+- Boss 战难度较高，建议在叙事中给玩家预警
+
 ## 装备系统
 
 玩家有四个装备槽：**武器(weapon)**、**护甲(armor)**、**法宝(treasure)**、**饰品(accessory)**。

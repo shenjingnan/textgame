@@ -24,7 +24,7 @@ export function narrative(speaker: string, text: string): GameEvent {
 // ==================== 属性变更 ====================
 
 export function statChange(
-  target: 'player' | 'pet',
+  target: 'player' | 'pet' | 'enemy',
   changes: Partial<CoreStats>,
   petId?: string
 ): GameEvent {
