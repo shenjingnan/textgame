@@ -12,6 +12,22 @@ import {
   buildSystemPrompt,
 } from '../llm/prompt-builder';
 import { parseStreamResponse } from '../llm/response-parser';
+import type { PlayerOrigin, PlayerTalent } from '../player/player';
+import {
+  buildConfirmDecision,
+  buildNameDecision,
+  buildOriginDecision,
+  buildTalentDecision,
+  createCharacter,
+  getOriginById,
+  getTalentById,
+} from '../player/player';
+import {
+  attemptBreakthrough,
+  canAttemptBreakthrough,
+  performCultivation,
+  resolveTribulation,
+} from '../player/realm';
 import {
   CANGWU_MOUNTAINS,
   canMoveTo,
@@ -71,6 +87,8 @@ const WELCOME_TEXT = `
 
 // ==================== GameEngine ====================
 
+type CreationStep = 'origin' | 'talent' | 'name' | 'confirm' | 'done';
+
 export class GameEngine {
   private state: GameState;
   private llm: GameLLMClient;
@@ -80,18 +98,19 @@ export class GameEngine {
   private accumulatedText = '';
   private _isProcessing = false;
 
+  // 角色创建追踪
+  private creationState: {
+    step: CreationStep;
+    origin: PlayerOrigin | null;
+    talent: PlayerTalent | null;
+    name: string;
+  } | null = null;
+
   constructor(callbacks: EngineCallbacks, apiKey?: string) {
     this.callbacks = callbacks;
     this.state = createInitialState('无名散修', 'normal', CANGWU_MOUNTAINS);
     this.llm = new GameLLMClient(apiKey);
     this.contextManager = new ContextManager();
-
-    // 添加初始系统消息
-    this.contextManager.addUserMessage(
-      `[游戏开始] 玩家「${this.state.player.name}」进入苍梧山脉修仙世界。` +
-        `境界：${this.state.player.realm.name}${this.state.player.realm.subStage}。` +
-        `位置：苍梧城。作为DM，请向玩家描述当前场景并引导游戏。`
-    );
   }
 
   // ==================== 公开 API ====================
@@ -115,9 +134,27 @@ export class GameEngine {
     this.llm.abort();
   }
 
+  /** 开始角色创建流程 */
+  startCharacterCreation(): void {
+    this.creationState = { step: 'origin', origin: null, talent: null, name: '' };
+    const decision = buildOriginDecision();
+    this.callbacks.onDecisionRequired(decision);
+  }
+
+  /** 是否正在角色创建中 */
+  isInCharacterCreation(): boolean {
+    return this.creationState !== null && this.creationState.step !== 'done';
+  }
+
   /** 处理玩家自由输入 */
   async processInput(text: string): Promise<void> {
     if (this._isProcessing) return;
+
+    // 角色创建中的名称输入
+    if (this.isInCharacterCreation() && this.creationState?.step === 'name') {
+      this.processNameInput(text);
+      return;
+    }
 
     this._isProcessing = true;
     this.accumulatedText = '';
@@ -143,6 +180,18 @@ export class GameEngine {
 
   /** 处理决策选择 */
   async handleDecision(choiceId: string, choiceLabel: string): Promise<void> {
+    // 角色创建分支
+    if (this.isInCharacterCreation()) {
+      await this.handleCreationDecision(choiceId, choiceLabel);
+      return;
+    }
+
+    // 突破判定分支
+    if (this.state.meta.phase === 'breakthrough') {
+      this.handleBreakthroughDecision(choiceId);
+      return;
+    }
+
     this._isProcessing = true;
     this.accumulatedText = '';
 
@@ -183,6 +232,9 @@ export class GameEngine {
 
       case '/move':
         return this.cmdMove(arg);
+
+      case '/cultivate':
+        return this.cmdCultivate(arg);
 
       case '/save':
         return this.cmdSave(arg);
@@ -333,6 +385,23 @@ export class GameEngine {
     };
   }
 
+  private cmdCultivate(roundsArg: string): CommandResult {
+    const rounds = parseInt(roundsArg, 10) || 1;
+    const events = performCultivation(this.state, rounds);
+    this.applyEvents(events);
+
+    const narrativeText = events
+      .filter((e) => e.type === 'narrative')
+      .map((e) => (e as { text: string }).text)
+      .join('\n');
+
+    const cult = Math.round(this.state.player.realm.cultivation);
+    return {
+      type: 'narrative_append',
+      message: `\n\n${narrativeText}\n\n\`\`\`\n修炼进度: ${cult}%\n\`\`\``,
+    };
+  }
+
   private cmdSave(slotArg: string): CommandResult {
     const slot = slotArg || 'auto';
     const result = saveGame(this.state, slot);
@@ -379,6 +448,7 @@ export class GameEngine {
 | /look | 观察当前位置 |
 | /inventory | 查看背包和装备 |
 | /move <地点> | 移动到相邻地点 |
+| /cultivate [回合] | 主动修炼（默认1周天，最多10） |
 | /save [槽位] | 保存游戏 |
 | /load [槽位] | 读取存档 |
 | /help | 显示此帮助 |
@@ -393,6 +463,165 @@ export class GameEngine {
     };
   }
 
+  // ==================== 角色创建处理 ====================
+
+  private async handleCreationDecision(choiceId: string, _choiceLabel: string): Promise<void> {
+    if (!this.creationState) return;
+
+    switch (this.creationState.step) {
+      case 'origin': {
+        const origin = getOriginById(choiceId);
+        if (origin) {
+          this.creationState.origin = origin;
+          this.creationState.step = 'talent';
+          this.callbacks.onDecisionRequired(buildTalentDecision());
+        }
+        break;
+      }
+
+      case 'talent': {
+        const talent = getTalentById(choiceId);
+        if (talent) {
+          this.creationState.talent = talent;
+          this.creationState.step = 'name';
+          this.callbacks.onDecisionRequired(buildNameDecision());
+        }
+        break;
+      }
+
+      case 'confirm': {
+        if (choiceId === 'confirm_yes') {
+          this.finalizeCreation();
+        } else {
+          // 重新开始
+          this.creationState = { step: 'origin', origin: null, talent: null, name: '' };
+          this.callbacks.onDecisionRequired(buildOriginDecision());
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  // 处理 free_text 类型的名称输入
+  processNameInput(name: string): void {
+    if (!this.creationState || this.creationState.step !== 'name') return;
+
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      this.callbacks.onDecisionRequired(buildNameDecision());
+      return;
+    }
+
+    this.creationState.name = trimmed;
+    this.creationState.step = 'confirm';
+
+    const origin = this.creationState.origin!;
+    const talent = this.creationState.talent!;
+    const difficultyNames: Record<string, string> = {
+      easy: '简单',
+      normal: '普通',
+      hard: '困难',
+    };
+
+    this.callbacks.onDecisionRequired(
+      buildConfirmDecision({
+        name: trimmed,
+        originName: origin.name,
+        talentName: talent.name,
+        difficulty: difficultyNames[this.state.meta.difficulty] ?? '普通',
+      })
+    );
+  }
+
+  private finalizeCreation(): void {
+    if (!this.creationState?.origin || !this.creationState?.talent) return;
+
+    const oldDifficulty = this.state.meta.difficulty;
+    this.state = createCharacter({
+      name: this.creationState.name || '无名散修',
+      origin: this.creationState.origin,
+      talent: this.creationState.talent,
+      difficulty: oldDifficulty,
+      worldData: CANGWU_MOUNTAINS,
+    });
+
+    this.creationState.step = 'done';
+    this.contextManager.clear();
+    this.contextManager.addUserMessage(
+      `[游戏开始] 玩家「${this.state.player.name}」进入苍梧山脉修仙世界。` +
+        `出身：${this.creationState.origin.name}，天赋：${this.creationState.talent.name}。` +
+        `境界：${this.state.player.realm.name}${this.state.player.realm.subStage}。` +
+        `位置：苍梧城。作为DM，请向玩家描述当前场景并引导游戏。`
+    );
+
+    this.callbacks.onStateUpdate(this.state);
+
+    // 自动开始首轮探索
+    this._isProcessing = true;
+    this.accumulatedText = '';
+    this.callbacks.onProcessingStart('灵气凝聚中...');
+    this.runLLMCycle().catch((err) => {
+      this.callbacks.onProcessingEnd();
+      const errorMsg = err instanceof Error ? err.message : '未知错误';
+      this.callbacks.onError(errorMsg);
+      this.appendNarrative(`\n\n*（系统：${errorMsg}）*`);
+      this.finishTurn();
+    });
+  }
+
+  // ==================== 突破处理 ====================
+
+  private handleBreakthroughDecision(choiceId: string): void {
+    if (choiceId === 'yes') {
+      const result = attemptBreakthrough(this.state);
+      this.applyEvents(result.events);
+
+      if (result.triggersTribulation) {
+        // 天劫结算
+        const tribResult = resolveTribulation(this.state);
+        this.applyEvents(tribResult.events);
+      }
+
+      this.state.meta.phase = 'exploration';
+      this.state.narrative.pendingDecision = null;
+
+      this.callbacks.onStateUpdate(this.state);
+      this.finishTurn();
+    } else {
+      // 选择不突破，回到探索
+      this.state.meta.phase = 'exploration';
+      this.state.narrative.pendingDecision = null;
+      this.appendNarrative('\n\n*你决定暂缓突破，继续稳固根基。*');
+      this.finishTurn();
+    }
+  }
+
+  private checkBreakthrough(): void {
+    if (this.state.player.realm.cultivation >= 100 && this.state.meta.phase === 'exploration') {
+      const check = canAttemptBreakthrough(this.state);
+      if (check.canAttempt) {
+        this.state.meta.phase = 'breakthrough';
+        const prompt =
+          `你的修炼已至**${check.currentRealm}**圆满！\n\n` +
+          `突破难度：${Math.round(check.breakthroughDifficulty * 100)}% | ` +
+          `天劫风险：${Math.round(check.tribulationRisk * 100)}%\n\n` +
+          `是否尝试突破？突破失败会损失部分修炼进度和生命值。`;
+        this.state.narrative.pendingDecision = {
+          type: 'menu',
+          prompt,
+          choices: [
+            { id: 'yes', label: '突破境界', description: '冒险一搏，冲击更高境界' },
+            { id: 'no', label: '暂不突破', description: '继续修炼，稳固根基' },
+          ],
+        };
+        this.callbacks.onDecisionRequired(this.state.narrative.pendingDecision);
+      }
+    }
+  }
+
   // ==================== LLM 循环 ====================
 
   private async runLLMCycle(): Promise<void> {
@@ -400,6 +629,9 @@ export class GameEngine {
     const context = this.contextManager.buildContext(this.state, systemPrompt);
     const eventStream = this.llm.streamChat(context);
     await this.processStream(eventStream);
+
+    // 检查是否需要突破
+    this.checkBreakthrough();
 
     // 检查是否有待处理决策
     if (this.state.narrative.pendingDecision) {
