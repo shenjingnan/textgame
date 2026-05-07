@@ -11,74 +11,13 @@ import {
   Markdown,
   ProcessTerminal,
   SelectList,
-  Spacer,
   Text,
   TUI,
 } from '@mariozechner/pi-tui';
 import type { EngineCallbacks } from './game/engine';
 import { GameEngine } from './game/engine';
 import type { CombatState, GameState, PendingDecision } from './game/types';
-
-// ==================== ANSI 颜色工具 ====================
-
-const CSI = '\x1b[';
-const SGR = (n: number) => `${CSI}${n}m`;
-
-const colors = {
-  reset: SGR(0),
-  bold: SGR(1),
-  dim: SGR(2),
-  cyan: SGR(36),
-  green: SGR(32),
-  yellow: SGR(33),
-  red: SGR(31),
-  magenta: SGR(35),
-  blue: SGR(34),
-  white: SGR(37),
-  gray: SGR(90),
-};
-
-function style(text: string, code: string): string {
-  return `${code}${text}${colors.reset}`;
-}
-
-// ==================== 主题定义 ====================
-
-const markdownTheme = {
-  heading: (text: string) => style(text, colors.bold + colors.yellow),
-  link: (text: string) => style(text, colors.cyan),
-  linkUrl: (text: string) => style(text, colors.dim),
-  code: (text: string) => style(text, colors.green),
-  codeBlock: (text: string) => text,
-  codeBlockBorder: (text: string) => style(text, colors.dim),
-  quote: (text: string) => style(text, colors.dim),
-  quoteBorder: (text: string) => style(text, colors.dim),
-  hr: (text: string) => style(text, colors.dim),
-  listBullet: (text: string) => style(text, colors.cyan),
-  bold: (text: string) => style(text, colors.bold),
-  italic: (text: string) => style(text, colors.dim),
-  strikethrough: (text: string) => style(text, colors.dim),
-  underline: (text: string) => style(text, colors.bold),
-};
-
-const editorTheme = {
-  borderColor: (str: string) => style(str, colors.cyan),
-  selectList: {
-    selectedPrefix: (text: string) => style(text, colors.cyan + colors.bold),
-    selectedText: (text: string) => style(text, colors.bold),
-    description: (text: string) => style(text, colors.dim),
-    scrollInfo: (text: string) => style(text, colors.dim),
-    noMatch: (text: string) => style(text, colors.red),
-  },
-};
-
-const selectListTheme = {
-  selectedPrefix: (text: string) => style(text, colors.yellow + colors.bold),
-  selectedText: (text: string) => style(text, colors.bold + colors.white),
-  description: (text: string) => style(text, colors.dim),
-  scrollInfo: (text: string) => style(text, colors.dim),
-  noMatch: (text: string) => style(text, colors.red),
-};
+import { colors, editorTheme, markdownTheme, SGR, selectListTheme, style } from './ui/theme';
 
 // ==================== 状态栏构建 ====================
 
@@ -124,6 +63,8 @@ function buildCombatPanel(combat: CombatState): string {
 
 // ==================== TuiGameRunner ====================
 
+const MAX_NARRATIVE_CHARS = 10000;
+
 class TuiGameRunner {
   private engine: GameEngine;
   private tui: TUI;
@@ -134,7 +75,7 @@ class TuiGameRunner {
   private combatPanel: Text;
   private editor: Editor;
 
-  // 叙事文本追踪（用于命令追加）
+  // 叙事文本追踪（用于命令追加，带滑动窗口截断）
   private narrativeText = '';
 
   // 加载器
@@ -160,13 +101,13 @@ class TuiGameRunner {
       void this.handleInput(text);
     };
 
-    // 组装布局
+    // 组装布局（使用分隔线替代空 Spacer）
     this.tui.addChild(this.statusBar);
-    this.tui.addChild(new Spacer());
+    this.tui.addChild(new Text(style('─'.repeat(80), colors.dim), 0, 0));
     this.tui.addChild(this.narrativeView);
-    this.tui.addChild(new Spacer());
+    this.tui.addChild(new Text(style('─'.repeat(80), colors.dim), 0, 0));
     this.tui.addChild(this.combatPanel);
-    this.tui.addChild(new Spacer());
+    this.tui.addChild(new Text(style('─'.repeat(80), colors.dim), 0, 0));
     this.tui.addChild(this.editor);
     this.tui.setFocus(this.editor);
 
@@ -206,8 +147,7 @@ class TuiGameRunner {
 
       onError: (message: string) => {
         this.hideLoader();
-        this.narrativeText += `\n\n*（系统错误：${message}）*`;
-        this.narrativeView.setText(this.narrativeText);
+        this.appendNarrative(`\n\n*（系统错误：${message}）*`);
         this.tui.requestRender();
       },
 
@@ -236,6 +176,19 @@ class TuiGameRunner {
     this.tui.start();
   }
 
+  /** 追加叙事文本，带滑动窗口截断 */
+  private appendNarrative(text: string): void {
+    this.narrativeText += text;
+    if (this.narrativeText.length > MAX_NARRATIVE_CHARS) {
+      const cutoff = this.narrativeText.length - MAX_NARRATIVE_CHARS;
+      // 找到 cutoff 之后的第一个换行，避免截断行内文字
+      const nextLine = this.narrativeText.indexOf('\n', cutoff);
+      const start = nextLine > cutoff ? nextLine + 1 : cutoff;
+      this.narrativeText = '...（早期叙事已省略）\n\n' + this.narrativeText.slice(start);
+    }
+    this.narrativeView.setText(this.narrativeText);
+  }
+
   /** 处理用户输入 */
   private async handleInput(text: string): Promise<void> {
     const trimmed = text.trim();
@@ -254,15 +207,13 @@ class TuiGameRunner {
       const result = this.engine.executeCommand(trimmed);
 
       if (result.type === 'narrative_append') {
-        this.narrativeText += result.message;
-        this.narrativeView.setText(this.narrativeText);
+        this.appendNarrative(result.message);
       } else if (result.type === 'state_change') {
         this.statusBar.setText(buildStatusLine(this.engine.getState()));
         this.narrativeText = result.message;
         this.narrativeView.setText(this.narrativeText);
       } else if (result.type === 'error') {
-        this.narrativeText += `\n\n*${result.message}*`;
-        this.narrativeView.setText(this.narrativeText);
+        this.appendNarrative(`\n\n*${result.message}*`);
       }
       this.tui.requestRender();
       return;
@@ -308,8 +259,7 @@ class TuiGameRunner {
       };
 
       // 在叙事中追加提示文本
-      this.narrativeText += `\n\n*${decision.prompt}*`;
-      this.narrativeView.setText(this.narrativeText);
+      this.appendNarrative(`\n\n*${decision.prompt}*`);
 
       this.tui.showOverlay(selectList, {
         width: '70%',

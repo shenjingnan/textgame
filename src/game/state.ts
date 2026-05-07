@@ -134,8 +134,8 @@ export function calculateBaseStats(realmIndex: number, difficulty: GameDifficult
     maxHp: Math.round(base * realm.statMultiplier * difficultyMultiplier),
     qi: Math.round(base * 1.5 * realm.statMultiplier * difficultyMultiplier),
     maxQi: Math.round(base * 1.5 * realm.statMultiplier * difficultyMultiplier),
-    stamina: Math.round(base * 0.8 * difficultyMultiplier),
-    maxStamina: Math.round(base * 0.8 * difficultyMultiplier),
+    stamina: Math.round(base * 0.8 * realm.statMultiplier * difficultyMultiplier),
+    maxStamina: Math.round(base * 0.8 * realm.statMultiplier * difficultyMultiplier),
     willpower: 10 + realmIndex * 5,
   };
 }

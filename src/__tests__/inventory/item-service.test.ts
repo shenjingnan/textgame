@@ -141,7 +141,7 @@ describe('item-service', () => {
 
     it('丹道奇才天赋加成', () => {
       const state = createTestState();
-      state.player.flags['pill_master'] = true;
+      state.player.flags['item_effect_bonus'] = 0.5;
       state.player.stats.hp = 50;
       state.player.stats.maxHp = 100;
 
@@ -151,7 +151,7 @@ describe('item-service', () => {
 
       const result = useItem(s, 'pill_hp');
       const next = applyEvents(s, result.events);
-      // 30 * 1.5 = 45, 50 + 45 = 95
+      // 30 * (1 + 0.5) = 45, 50 + 45 = 95
       expect(next.player.stats.hp).toBe(95);
     });
 

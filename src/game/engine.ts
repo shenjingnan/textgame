@@ -112,6 +112,29 @@ const WELCOME_TEXT = `
 type CreationStep = 'origin' | 'talent' | 'name' | 'confirm' | 'done';
 
 export class GameEngine {
+  private static COMMANDS: Array<{ cmd: string; args: string; desc: string }> = [
+    { cmd: '/status', args: '', desc: '查看完整角色状态' },
+    { cmd: '/look', args: '', desc: '观察当前位置' },
+    { cmd: '/inventory', args: '', desc: '查看背包和装备' },
+    { cmd: '/move', args: '<地点>', desc: '移动到相邻地点' },
+    { cmd: '/cultivate', args: '[回合]', desc: '主动修炼（默认1周天，最多10）' },
+    { cmd: '/equip', args: '<物品>', desc: '装备武器/护甲/法宝/饰品' },
+    { cmd: '/unequip', args: '<槽位>', desc: '卸下装备（weapon/armor/treasure/accessory）' },
+    { cmd: '/use', args: '<物品>', desc: '使用消耗品' },
+    { cmd: '/shop', args: '', desc: '查看当前地点商人商品' },
+    { cmd: '/buy', args: '<物品> [数量]', desc: '从商人处购买物品' },
+    { cmd: '/sell', args: '<物品> [数量]', desc: '向商人出售物品' },
+    { cmd: '/repair', args: '<槽位>', desc: '消耗灵石修理损坏的装备' },
+    { cmd: '/techniques', args: '', desc: '查看已学功法' },
+    { cmd: '/pet', args: '[list/feed/interact/evolve]', desc: '管理灵宠' },
+    { cmd: '/save', args: '[槽位]', desc: '保存游戏' },
+    { cmd: '/load', args: '[槽位]', desc: '读取存档' },
+    { cmd: '/export-save', args: '', desc: '导出存档码（可复制分享）' },
+    { cmd: '/import-save', args: '<存档码>', desc: '从存档码导入游戏' },
+    { cmd: '/help', args: '', desc: '显示此帮助' },
+    { cmd: '/quit', args: '', desc: '退出游戏' },
+  ];
+
   private state: GameState;
   private llm: GameLLMClient;
   private contextManager: ContextManager;
@@ -300,6 +323,9 @@ export class GameEngine {
       case '/import-save':
         return this.cmdImportSave(arg);
 
+      case '/techniques':
+        return this.cmdTechniques();
+
       case '/help':
         return this.cmdHelp();
 
@@ -324,9 +350,35 @@ export class GameEngine {
   // ==================== 命令实现 ====================
 
   private cmdStatus(): CommandResult {
+    const s = this.state.player;
+    const realm = `${s.realm.name}${s.realm.subStage}`;
+    const location = getLocationName(this.state.world.currentLocationId);
+    const equipped =
+      Object.entries(s.equipment)
+        .filter(([, eq]) => eq)
+        .map(([, eq]) => `${eq!.name}(${eq!.grade})`)
+        .join('、') || '无';
+    const petNames = this.state.pets.map((p) => `${p.name}(${p.species})`).join('、') || '无';
+
     return {
       type: 'narrative_append',
-      message: `\n\n\`\`\`\n${buildStatusSummary(this.state)}\n\`\`\``,
+      message:
+        `\n\n## 角色状态\n\n` +
+        `| 属性 | 数值 |\n|------|------|\n` +
+        `| 道号 | ${s.name} |\n` +
+        `| 称号 | ${s.title} |\n` +
+        `| 境界 | ${realm} |\n` +
+        `| 位置 | ${location} |\n` +
+        `| 生命 | ${s.stats.hp}/${s.stats.maxHp} |\n` +
+        `| 灵力 | ${s.stats.qi}/${s.stats.maxQi} |\n` +
+        `| 体力 | ${s.stats.stamina}/${s.stats.maxStamina} |\n` +
+        `| 意志 | ${s.stats.willpower} |\n` +
+        `| 灵石 | ${s.spiritStones} |\n` +
+        `| 修炼进度 | ${s.realm.cultivation}% |\n` +
+        `| 回合 | ${this.state.meta.turn} |\n` +
+        `| 阵营 | ${s.faction || '无'} |\n` +
+        `| 已装备 | ${equipped} |\n` +
+        `| 灵宠 | ${petNames} |`,
     };
   }
 
@@ -954,39 +1006,38 @@ export class GameEngine {
     }
   }
 
-  private cmdHelp(): CommandResult {
+  private cmdTechniques(): CommandResult {
+    const techniques = this.state.player.techniques;
+
+    if (techniques.length === 0) {
+      return {
+        type: 'narrative_append',
+        message: '\n\n你尚未学习任何功法。可在青云宗外门寻找功法，或从敌人身上获取功法残卷。',
+      };
+    }
+
+    const lines = techniques.map((t) => {
+      const status = t.equipped ? '**[已装备]**' : '';
+      const skills = t.skills.map((s) => s.name).join('、');
+      return (
+        `### ${t.name} ${status}\n` +
+        `- 品质：${t.grade} | 技能：${skills}\n` +
+        `- ${t.description}`
+      );
+    });
+
     return {
       type: 'narrative_append',
-      message: `
-## 命令列表
+      message: `\n\n## 已学功法\n\n${lines.join('\n\n')}`,
+    };
+  }
 
-| 命令 | 说明 |
-|------|------|
-| /status | 查看完整角色状态 |
-| /look | 观察当前位置 |
-| /inventory | 查看背包和装备 |
-| /move <地点> | 移动到相邻地点 |
-| /cultivate [回合] | 主动修炼（默认1周天，最多10） |
-| /equip <物品> | 装备武器/护甲/法宝/饰品 |
-| /unequip <槽位> | 卸下装备（weapon/armor/treasure/accessory） |
-| /use <物品> | 使用消耗品 |
-| /shop | 查看当前地点商人商品 |
-| /buy <物品> [数量] | 从商人处购买物品 |
-| /sell <物品> [数量] | 向商人出售物品 |
-| /repair <槽位> | 消耗灵石修理损坏的装备 |
-| /save [槽位] | 保存游戏 |
-| /load [槽位] | 读取存档 |
-| /export-save | 导出存档码（可复制分享） |
-| /import-save <存档码> | 从存档码导入游戏 |
-| /help | 显示此帮助 |
-| /quit | 退出游戏 |
+  private cmdHelp(): CommandResult {
+    const lines = GameEngine.COMMANDS.map((c) => `| ${c.cmd} ${c.args} | ${c.desc} |`).join('\n');
 
-**自由输入示例**：
-- 探索区域、采集灵草
-- 与NPC交谈、交易物品
-- 修炼功法、突破境界
-- 进入战斗、使用物品
-`,
+    return {
+      type: 'narrative_append',
+      message: `\n## 命令列表\n\n| 命令 | 说明 |\n|------|------|\n${lines}\n\n**自由输入示例**：\n- 探索区域、采集灵草\n- 与NPC交谈、交易物品\n- 修炼功法、突破境界\n- 进入战斗、使用物品\n`,
     };
   }
 

@@ -230,7 +230,7 @@ const abandonedMine: Location = {
   type: 'dungeon',
   dangerLevel: 7,
   realmSuitability: 4,
-  connections: ['outside_forest'],
+  connections: ['outside_forest', 'ancient_cave'],
   npcs: [stoneDemon],
   description:
     '废弃矿洞位于密林深处的一座小山丘下，洞口阴森漆黑，' +
@@ -246,7 +246,7 @@ const ancientCave: Location = {
   type: 'secret_realm',
   dangerLevel: 9,
   realmSuitability: 8,
-  connections: [],
+  connections: ['abandoned_mine'],
   npcs: [caveRemnant],
   description:
     '隐藏在苍梧山脉深处的古代修士洞府，入口被一道古老的禁制所封印，' +

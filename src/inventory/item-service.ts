@@ -61,8 +61,9 @@ function resolveItemEffect(state: GameState, effect: ItemEffect, itemName: strin
   let { value, operation, attribute, duration } = effect;
 
   // 天赋加成：丹道奇才
-  if (state.player.flags['pill_master']) {
-    value = Math.round(value * 1.5);
+  const itemBonus = state.player.flags['item_effect_bonus'];
+  if (typeof itemBonus === 'number' && itemBonus > 0) {
+    value = Math.round(value * (1 + itemBonus));
   }
 
   switch (operation) {
