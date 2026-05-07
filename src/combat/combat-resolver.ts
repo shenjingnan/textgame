@@ -5,6 +5,7 @@
 
 import { REALM_DEFINITIONS } from '../game/state';
 import type { CombatSkill, CoreStats, Enemy, GameItem, GameState, LootTable } from '../game/types';
+import { getItemById } from '../inventory/item-data';
 
 // ==================== 辅助 ====================
 
@@ -52,19 +53,20 @@ export function calculatePlayerAttack(state: GameState): number {
   const realmDef = REALM_DEFINITIONS[state.player.realm.name];
   let attack = 20 + state.player.realm.progressIndex * 5;
 
-  // 装备加成
-  for (const eq of Object.values(state.player.equipment)) {
-    if (!eq) continue;
-    if (eq.stats.hp) attack += Math.round(eq.stats.hp * 0.3);
-    if (eq.stats.willpower) attack += Math.round(eq.stats.willpower * 0.5);
-  }
-
-  // 境界倍率
+  // 境界倍率（先应用，装备作为固定加成在倍率之后）
   attack = Math.round(attack * realmDef.statMultiplier);
 
-  // 天赋加成
-  if (state.player.flags.talent_combat) {
-    attack = Math.round(attack * 1.15);
+  // 装备加成（在倍率之后，作为固定数值加成）
+  for (const eq of Object.values(state.player.equipment)) {
+    if (!eq) continue;
+    if (eq.stats.hp) attack += Math.round(eq.stats.hp * 0.5);
+    if (eq.stats.willpower) attack += Math.round(eq.stats.willpower * 0.8);
+  }
+
+  // 天赋加成：剑心通明
+  const combatBonus = state.player.flags.combat_damage_bonus;
+  if (typeof combatBonus === 'number' && combatBonus > 0) {
+    attack = Math.round(attack * (1 + combatBonus));
   }
 
   return attack;
@@ -72,17 +74,16 @@ export function calculatePlayerAttack(state: GameState): number {
 
 /** 从 GameState 计算玩家防御力 */
 export function calculatePlayerDefense(state: GameState): number {
+  const realmDef = REALM_DEFINITIONS[state.player.realm.name];
   let defense = 10 + state.player.realm.progressIndex * 3;
 
-  // 装备加成
+  // 应用缩减的 statMultiplier（40% 比例，使防御不至于完全无用）
+  defense = Math.round(defense * (1 + (realmDef.statMultiplier - 1) * 0.4));
+
+  // 装备加成（在倍率之后）
   for (const eq of Object.values(state.player.equipment)) {
     if (!eq) continue;
     if (eq.stats.maxHp) defense += Math.round(eq.stats.maxHp * 0.15);
-  }
-
-  // 天赋加成
-  if (state.player.flags.talent_tough) {
-    defense = Math.round(defense * 1.2);
   }
 
   return defense;
@@ -378,13 +379,51 @@ export function quickResolve(
     };
   }
 
-  // 实力不济，失败
-  const hpLoss = Math.round(state.player.stats.maxHp * (0.25 + randomFn() * 0.25));
+  if (powerRatio >= 0.65) {
+    // 险胜
+    const hpLoss = Math.round(state.player.stats.maxHp * (0.18 + randomFn() * 0.15));
+    const loot = generateLoot(enemy.loot, randomFn);
+    const lootText =
+      loot.length > 0
+        ? `\n获得战利品：${loot.map((l) => `${l.name}x${l.quantity}`).join('、')}`
+        : '';
+
+    const narratives = [
+      `你与${enemy.name}激战许久，几乎力竭，最终险胜。${lootText}`,
+      `${enemy.name}实力不俗，你拼尽全力才勉强取胜，伤势不轻。${lootText}`,
+    ];
+
+    return {
+      result: 'victory',
+      hpLoss,
+      narrative: pickRandom(narratives, randomFn),
+      loot,
+    };
+  }
+
+  if (powerRatio >= 0.5) {
+    // 勉强撤退
+    const hpLoss = Math.round(state.player.stats.maxHp * (0.22 + randomFn() * 0.2));
+
+    const narratives = [
+      `${enemy.name}实力明显强于你，一番苦战后你带伤撤退。`,
+      `你与${enemy.name}力战不敌，幸好及时脱身。`,
+    ];
+
+    return {
+      result: 'defeat',
+      hpLoss,
+      narrative: pickRandom(narratives, randomFn),
+    };
+  }
+
+  // 惨败：实力差距过大
+  const hpLoss = Math.round(state.player.stats.maxHp * (0.3 + randomFn() * 0.3));
 
   const narratives = [
-    `你与${enemy.name}苦战一番，终究不敌，只得狼狈撤退。`,
-    `${enemy.name}的实力超出你的预料，你受伤不轻，被迫撤退。`,
-    `一番激战后，你意识到不是${enemy.name}的对手，带伤而退。`,
+    `你与${enemy.name}苦战一番，终究不敌，身受重伤，狼狈撤退。`,
+    `${enemy.name}的实力远超你的预料，你重伤濒死，被迫撤退。`,
+    `一番激战后，你意识到远不是${enemy.name}的对手，重伤而退。`,
   ];
 
   return {
@@ -403,37 +442,35 @@ export function generateLoot(
 ): GameItem[] {
   const loot: GameItem[] = [];
 
-  // 必定掉落
-  for (const entry of lootTable.guaranteed) {
-    loot.push({
-      id: entry.itemId,
-      name: entry.itemId,
+  function createLootItem(itemId: string, quantity: number): GameItem {
+    const template = getItemById(itemId);
+    if (template) {
+      return { ...template, quantity };
+    }
+    // 回退：模板未找到时使用 itemId 作为名称
+    return {
+      id: itemId,
+      name: itemId,
       type: 'misc',
       subtype: 'loot',
       description: '',
-      quantity: entry.quantity,
+      quantity,
       effects: [],
       value: 0,
       stackable: true,
       maxStack: 99,
-    });
+    };
+  }
+
+  // 必定掉落
+  for (const entry of lootTable.guaranteed) {
+    loot.push(createLootItem(entry.itemId, entry.quantity));
   }
 
   // 概率掉落
   for (const entry of lootTable.possible) {
     if (randomFn() < entry.chance) {
-      loot.push({
-        id: entry.itemId,
-        name: entry.itemId,
-        type: 'misc',
-        subtype: 'loot',
-        description: '',
-        quantity: entry.quantity,
-        effects: [],
-        value: 0,
-        stackable: true,
-        maxStack: 99,
-      });
+      loot.push(createLootItem(entry.itemId, entry.quantity));
     }
   }
 

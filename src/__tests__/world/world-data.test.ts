@@ -75,8 +75,10 @@ describe('getConnectedLocations', () => {
     expect(getConnectedLocations('nonexistent')).toEqual([]);
   });
 
-  it('should return empty array for ancient_cave (hidden location)', () => {
-    expect(getConnectedLocations('ancient_cave')).toEqual([]);
+  it('should return abandoned_mine for ancient_cave (connected via abandoned mine)', () => {
+    const connected = getConnectedLocations('ancient_cave');
+    expect(connected).toHaveLength(1);
+    expect(connected[0]?.id).toBe('abandoned_mine');
   });
 });
 

@@ -209,7 +209,7 @@ export function resolveTribulation(
   randomFn: () => number = Math.random
 ): TribulationResult {
   const realmDef = REALM_DEFINITIONS[state.player.realm.name];
-  const willpowerBonus = 1 + 0.2 * (state.player.stats.willpower / 50);
+  const willpowerBonus = 1 + 0.2 * (state.player.stats.willpower / 40);
   let survivalChance = (1 - realmDef.tribulationRisk) * willpowerBonus;
   survivalChance = Math.max(0.1, Math.min(0.95, survivalChance));
 
@@ -223,26 +223,26 @@ export function resolveTribulation(
         Events.narrative(
           'system',
           `天雷滚滚，九死一生！你以坚强的意志抵御天劫，成功踏入**${state.player.realm.name}${state.player.realm.subStage}**！` +
-            `\n天劫洗礼后，你的神识更加坚韧。`
+            `\n天劫洗礼后，你的神识更加坚韧，根基更加牢固。`
         ),
-        Events.statChange('player', { willpower: 5, maxHp: 20, maxQi: 30 }),
+        Events.statChange('player', { willpower: 8, maxHp: 30, maxQi: 40 }),
       ],
     };
   }
 
-  // 天劫失败：境界保留但修为清零、重伤
+  // 天劫失败：保留部分修为，重伤但不致命
   return {
     survived: false,
     events: [
       Events.narrative(
         'system',
-        `天劫威力远超预期！你虽勉强保住境界，但身受重伤，修为尽失。` +
+        `天劫威力远超预期！你虽勉强保住境界，但身受重伤，修为折损近半。` +
           `\n「修行之路，劫难重重。重整旗鼓，再踏仙途。」`
       ),
-      Events.cultivationGain(-state.player.realm.cultivation),
+      Events.cultivationGain(-Math.floor(state.player.realm.cultivation * 0.5)),
       Events.statChange('player', {
-        hp: -Math.floor(state.player.stats.maxHp * 0.5),
-        qi: -Math.floor(state.player.stats.maxQi * 0.3),
+        hp: -Math.floor(state.player.stats.maxHp * 0.3),
+        qi: -Math.floor(state.player.stats.maxQi * 0.2),
       }),
     ],
   };
