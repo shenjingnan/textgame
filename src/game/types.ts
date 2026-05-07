@@ -338,7 +338,7 @@ export interface GameState {
 
 export type GameEvent =
   | { type: 'narrative'; text: string; speaker: string; timestamp: number }
-  | { type: 'stat_change'; target: 'player' | 'pet'; petId?: string; changes: Partial<CoreStats> }
+  | { type: 'stat_change'; target: 'player' | 'pet' | 'enemy'; petId?: string; changes: Partial<CoreStats> }
   | { type: 'cultivation_gain'; amount: number }
   | { type: 'realm_advance'; newSubStage: SubStage; newRealm: RealmName; newProgressIndex: number }
   | { type: 'item_add'; item: GameItem }

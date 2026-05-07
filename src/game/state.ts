@@ -220,27 +220,34 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
     }
 
     case 'stat_change': {
-      const targetStats =
-        event.target === 'player'
-          ? next.player.stats
-          : next.pets.find((p) => p.id === event.petId)?.stats;
+      let targetStats: Record<string, number> | undefined;
+      if (event.target === 'player') {
+        targetStats = next.player.stats as unknown as Record<string, number>;
+      } else if (event.target === 'pet') {
+        targetStats = next.pets.find((p) => p.id === event.petId)?.stats as
+          | unknown as
+          | Record<string, number>
+          | undefined;
+      } else if (event.target === 'enemy' && next.combat) {
+        targetStats = next.combat.enemy.stats as unknown as Record<string, number>;
+      }
+
       if (targetStats) {
-        const statsRecord = targetStats as Record<string, number>;
         for (const [key, value] of Object.entries(event.changes)) {
-          if (value !== undefined && key in statsRecord) {
-            const current = statsRecord[key] ?? 0;
-            statsRecord[key] = current + value;
+          if (value !== undefined && key in targetStats) {
+            const current = targetStats[key] ?? 0;
+            targetStats[key] = current + value;
           }
         }
         // Clamp to valid ranges (only for properties that exist)
-        if ('maxHp' in statsRecord && 'hp' in statsRecord) {
-          statsRecord.hp = Math.max(0, Math.min(statsRecord.maxHp, statsRecord.hp));
+        if ('maxHp' in targetStats && 'hp' in targetStats) {
+          targetStats.hp = Math.max(0, Math.min(targetStats.maxHp, targetStats.hp));
         }
-        if ('maxQi' in statsRecord && 'qi' in statsRecord) {
-          statsRecord.qi = Math.max(0, Math.min(statsRecord.maxQi, statsRecord.qi));
+        if ('maxQi' in targetStats && 'qi' in targetStats) {
+          targetStats.qi = Math.max(0, Math.min(targetStats.maxQi, targetStats.qi));
         }
-        if ('maxStamina' in statsRecord && 'stamina' in statsRecord) {
-          statsRecord.stamina = Math.max(0, Math.min(statsRecord.maxStamina, statsRecord.stamina));
+        if ('maxStamina' in targetStats && 'stamina' in targetStats) {
+          targetStats.stamina = Math.max(0, Math.min(targetStats.maxStamina, targetStats.stamina));
         }
       }
       break;

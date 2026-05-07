@@ -3,6 +3,14 @@
 // ============================================================
 
 import type { AssistantMessageEventStream, ToolCall } from '@mariozechner/pi-ai';
+import {
+  canFlee,
+  canPetAssist,
+  getUsableCombatItems,
+  processRound,
+} from '../combat/combat-manager';
+import { quickResolve } from '../combat/combat-resolver';
+import { getEnemyById } from '../combat/enemy-data';
 import { GameLLMClient } from '../llm/client';
 import { ContextManager } from '../llm/context-manager';
 import {
@@ -189,6 +197,12 @@ export class GameEngine {
     // 突破判定分支
     if (this.state.meta.phase === 'breakthrough') {
       this.handleBreakthroughDecision(choiceId);
+      return;
+    }
+
+    // 战斗分支
+    if (this.state.meta.phase === 'combat') {
+      this.handleCombatAction(choiceId);
       return;
     }
 
@@ -702,6 +716,8 @@ export class GameEngine {
               `[系统] 上一轮叙事已展示。当前状态：${buildStatusSummary(this.state)}`
             );
           }
+          // 检查是否有 pending encounter
+          this.checkPendingEncounter();
           return;
         }
 
@@ -715,6 +731,182 @@ export class GameEngine {
           break;
       }
     }
+  }
+
+  // ==================== 战斗处理 ====================
+
+  /** 检查并触发 pending encounter */
+  private checkPendingEncounter(): void {
+    const enemyId = this.state.player.flags.pending_encounter;
+    if (!enemyId || typeof enemyId !== 'string') return;
+
+    // 清除 flag
+    this.state.player.flags.pending_encounter = undefined as unknown as string;
+    this.startCombat(enemyId);
+  }
+
+  /** 开始战斗 */
+  private startCombat(enemyId: string): void {
+    const enemy = getEnemyById(enemyId);
+    if (!enemy) {
+      this.appendNarrative(`\n\n*（系统：未知敌人 "${enemyId}"）*`);
+      return;
+    }
+
+    // 触发 combat_start 事件
+    this.applyEvents([Events.combatStart(enemy, enemy.type)]);
+
+    // 战前叙事
+    const encounterTexts: Record<string, string> = {
+      aggressive: `\n\n${enemy.description}\n\n*${enemy.name}向你发起攻击！*`,
+      defensive: `\n\n${enemy.description}\n\n*${enemy.name}警惕地盯着你，摆出防御姿态。*`,
+      berserk: `\n\n${enemy.description}\n\n*${enemy.name}发出震耳欲聋的咆哮，疯狂地朝你冲来！*`,
+      cunning: `\n\n${enemy.description}\n\n*${enemy.name}阴冷地注视着你，似乎在谋划着什么。*`,
+    };
+    const encounterText =
+      encounterTexts[enemy.behavior] ?? `\n\n${enemy.description}\n\n*你遇到了${enemy.name}！*`;
+    this.appendNarrative(encounterText);
+
+    if (enemy.type === 'minor') {
+      // 小怪速杀
+      const result = quickResolve(this.state, enemy);
+      const hpChangeEvent = Events.statChange('player', { hp: -result.hpLoss });
+      const narrativeEvent = Events.narrative('system', result.narrative);
+      this.applyEvents([hpChangeEvent, narrativeEvent]);
+
+      if (result.result === 'victory') {
+        const loot: import('./types').GameItem[] = result.loot ?? [];
+        this.applyEvents([Events.combatEnd('victory', loot)]);
+        if (loot.length > 0) {
+          this.appendNarrative(
+            `\n\n获得战利品：${loot.map((l) => `${l.name}x${l.quantity}`).join('、')}`
+          );
+        }
+        this.appendNarrative('\n\n*战斗结束，你继续前行。*');
+        this.callbacks.onStateUpdate(this.state);
+      } else {
+        this.applyEvents([Events.combatEnd('defeat', [])]);
+        this.appendNarrative('\n\n*你狼狈撤退，伤势不轻。*');
+        this.callbacks.onStateUpdate(this.state);
+
+        // 检查玩家是否死亡
+        if (this.state.player.stats.hp <= 0) {
+          this.appendNarrative('\n\n# 你被击败了！\n\n*你的修仙之路暂时中断...*');
+          this.callbacks.onGameOver('战斗失败');
+          return;
+        }
+      }
+      this.finishTurn();
+    } else {
+      // Boss 进入回合制
+      this.finishTurn();
+    }
+  }
+
+  /** 处理战斗菜单选择 */
+  private handleCombatAction(choiceId: string): void {
+    if (!this.state.combat?.active) return;
+
+    const combat = this.state.combat;
+
+    // 验证选择的合法性
+    if (choiceId === 'flee' && !canFlee(combat)) {
+      this.appendNarrative('\n\n*Boss 战中无法逃跑！你必须战斗到底！*');
+      this.finishTurn();
+      return;
+    }
+
+    if (choiceId === 'item') {
+      const items = getUsableCombatItems(this.state);
+      if (items.length === 0) {
+        this.appendNarrative('\n\n*你没有可用的战斗物品！*');
+        this.finishTurn();
+        return;
+      }
+      // 如果有多个物品，显示子菜单；这里简化处理，使用第一个物品
+      const firstItem = items[0];
+      if (!firstItem) {
+        this.appendNarrative('\n\n*你没有可用的战斗物品！*');
+        this.finishTurn();
+        return;
+      }
+      const playerAction = { type: 'item' as const, itemId: firstItem.id };
+      this.executeCombatRound(playerAction);
+      return;
+    }
+
+    if (choiceId === 'pet_assist') {
+      if (!canPetAssist(this.state)) {
+        this.appendNarrative('\n\n*你的灵宠无法助战！*');
+        this.finishTurn();
+        return;
+      }
+    }
+
+    let playerAction: import('./types').CombatAction;
+    switch (choiceId) {
+      case 'attack':
+        playerAction = { type: 'attack' };
+        break;
+      case 'defend':
+        playerAction = { type: 'defend' };
+        break;
+      case 'flee':
+        playerAction = { type: 'flee' };
+        break;
+      case 'pet_assist':
+        playerAction = { type: 'pet_assist' };
+        break;
+      default:
+        playerAction = { type: 'attack' };
+    }
+
+    this.executeCombatRound(playerAction);
+  }
+
+  /** 执行一回合战斗结算 */
+  private executeCombatRound(playerAction: import('./types').CombatAction): void {
+    const result = processRound(this.state, playerAction);
+    this.applyEvents(result.events);
+
+    if (result.combatEnded) {
+      this.endCombat(result.endResult ?? 'defeat', result.loot);
+    } else {
+      this.finishTurn();
+    }
+  }
+
+  /** 结束战斗 */
+  private endCombat(
+    result: 'victory' | 'defeat' | 'fled',
+    loot?: import('./types').GameItem[]
+  ): void {
+    const endEvents: GameEvent[] = [Events.combatEnd(result, loot ?? [])];
+    this.applyEvents(endEvents);
+
+    switch (result) {
+      case 'victory': {
+        const lootText =
+          loot && loot.length > 0
+            ? `\n获得战利品：${loot.map((l) => `${l.name}x${l.quantity}`).join('、')}`
+            : '';
+        this.appendNarrative(`\n\n# 战斗胜利！${lootText}`);
+        break;
+      }
+      case 'defeat':
+        this.appendNarrative('\n\n# 你被击败了！');
+        if (this.state.player.stats.hp <= 0) {
+          this.appendNarrative('\n\n*你的修仙之路暂时中断...*');
+          this.callbacks.onGameOver('战斗失败');
+          return;
+        }
+        break;
+      case 'fled':
+        this.appendNarrative('\n\n*你成功逃离了战斗。*');
+        break;
+    }
+
+    this.finishTurn();
   }
 
   // ==================== 内部辅助 ====================
@@ -731,6 +923,13 @@ export class GameEngine {
 
   private finishTurn(): void {
     this._isProcessing = false;
+    // 如果在战斗中，显示战斗菜单而非恢复自由输入
+    if (this.state.meta.phase === 'combat' && this.state.combat?.active) {
+      const menu = Events.createCombatMenu();
+      // 直接设置 pendingDecision（不通过事件，避免触发额外逻辑）
+      this.state.narrative.pendingDecision = menu;
+      this.callbacks.onDecisionRequired(menu);
+    }
     this.callbacks.onProcessingEnd();
   }
 }
