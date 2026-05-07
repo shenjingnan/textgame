@@ -1,3 +1,4 @@
+import { getPetTemplateById } from '../pet/pet-data';
 import type {
   CoreStats,
   Equipment,
@@ -389,11 +390,37 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
       if (pet) {
         pet.evolutionStage = event.newStage;
         pet.evolutionPath = event.newPath as 'normal' | 'divine' | 'demonic';
-        pet.stats.hp += 50;
-        pet.stats.maxHp += 50;
-        pet.stats.attack += 20;
-        pet.stats.defense += 15;
-        pet.stats.speed += 10;
+        // Template-driven stat growth
+        const template = getPetTemplateById(pet.templateId);
+        if (template) {
+          const chain = template.evolutionChain[event.newPath as 'normal' | 'divine' | 'demonic'];
+          const stageData = chain?.find((s) => s.stage === event.newStage);
+          if (stageData?.statGrowth) {
+            const g = stageData.statGrowth;
+            if (g.hp) pet.stats.hp = Math.round(pet.stats.hp * g.hp);
+            if (g.maxHp) pet.stats.maxHp = Math.round(pet.stats.maxHp * g.maxHp);
+            if (g.attack) pet.stats.attack = Math.round(pet.stats.attack * g.attack);
+            if (g.defense) pet.stats.defense = Math.round(pet.stats.defense * g.defense);
+            if (g.speed) pet.stats.speed = Math.round(pet.stats.speed * g.speed);
+            pet.species = stageData.speciesName;
+          }
+          // Add new skills for this stage
+          const newSkills = template.stageSkills[event.newStage] ?? [];
+          for (const skill of newSkills) {
+            if (!pet.skills.find((s) => s.name === skill.name)) {
+              pet.skills.push({ ...skill, currentCooldown: 0 });
+            }
+          }
+        } else {
+          // Fallback: use legacy hardcoded values if template not found
+          pet.stats.hp += 50;
+          pet.stats.maxHp += 50;
+          pet.stats.attack += 20;
+          pet.stats.defense += 15;
+          pet.stats.speed += 10;
+        }
+        pet.stats.hp = pet.stats.maxHp;
+        pet.loyalty = Math.min(100, pet.loyalty + 10);
       }
       break;
     }
@@ -402,6 +429,64 @@ export function gameReducer(state: GameState, event: GameEvent): GameState {
       next.pets = next.pets.filter((p) => p.id !== event.petId);
       if (next.activePetId === event.petId) {
         next.activePetId = next.pets[0]?.id ?? null;
+      }
+      break;
+    }
+
+    case 'pet_feed': {
+      const pet = next.pets.find((p) => p.id === event.petId);
+      if (pet) {
+        pet.stats.hp = Math.min(pet.stats.maxHp, pet.stats.hp + event.healAmount);
+        pet.loyalty = Math.min(100, Math.max(0, pet.loyalty + event.loyaltyChange));
+      }
+      break;
+    }
+
+    case 'pet_interact': {
+      const pet = next.pets.find((p) => p.id === event.petId);
+      if (pet) {
+        pet.loyalty = Math.min(100, Math.max(0, pet.loyalty + event.loyaltyChange));
+      }
+      break;
+    }
+
+    case 'pet_level_up': {
+      const pet = next.pets.find((p) => p.id === event.petId);
+      if (pet) {
+        pet.level = event.newLevel;
+        const si = event.statIncreases;
+        if (si.hp !== undefined) pet.stats.hp += si.hp;
+        if (si.maxHp !== undefined) pet.stats.maxHp += si.maxHp;
+        if (si.attack !== undefined) pet.stats.attack += si.attack;
+        if (si.defense !== undefined) pet.stats.defense += si.defense;
+        if (si.speed !== undefined) pet.stats.speed += si.speed;
+        pet.stats.hp = Math.min(pet.stats.hp, pet.stats.maxHp);
+      }
+      break;
+    }
+
+    case 'pet_skill_cooldown': {
+      const pet = next.pets.find((p) => p.id === event.petId);
+      if (pet) {
+        const skill = pet.skills.find((s) => s.name === event.skillName);
+        if (skill) {
+          skill.currentCooldown = event.cooldown;
+        }
+      }
+      break;
+    }
+
+    case 'pet_switch': {
+      if (next.pets.some((p) => p.id === event.petId)) {
+        next.activePetId = event.petId;
+      }
+      break;
+    }
+
+    case 'pet_rename': {
+      const pet = next.pets.find((p) => p.id === event.petId);
+      if (pet && event.newName.trim()) {
+        pet.name = event.newName.trim();
       }
       break;
     }

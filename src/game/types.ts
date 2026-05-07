@@ -168,6 +168,7 @@ export interface PetSkill {
 
 export interface SpiritPet {
   id: string;
+  templateId: string;
   name: string;
   species: string;
   level: number;
@@ -212,7 +213,7 @@ export type CombatAction =
   | { type: 'defend' }
   | { type: 'item'; itemId: string }
   | { type: 'flee' }
-  | { type: 'pet_assist' };
+  | { type: 'pet_assist'; petSkillName?: string };
 
 export interface CombatState {
   active: boolean;
@@ -388,6 +389,23 @@ export type GameEvent =
   | { type: 'pet_obtain'; pet: SpiritPet }
   | { type: 'pet_evolve'; petId: string; newStage: number; newPath: string }
   | { type: 'pet_release'; petId: string }
+  | { type: 'pet_feed'; petId: string; itemId: string; healAmount: number; loyaltyChange: number }
+  | { type: 'pet_interact'; petId: string; loyaltyChange: number }
+  | {
+      type: 'pet_level_up';
+      petId: string;
+      newLevel: number;
+      statIncreases: Partial<{
+        hp: number;
+        maxHp: number;
+        attack: number;
+        defense: number;
+        speed: number;
+      }>;
+    }
+  | { type: 'pet_skill_cooldown'; petId: string; skillName: string; cooldown: number }
+  | { type: 'pet_switch'; petId: string }
+  | { type: 'pet_rename'; petId: string; newName: string }
   | { type: 'technique_learn'; technique: Technique }
   | { type: 'technique_equip'; techniqueId: string }
   | { type: 'decision_required'; decision: PendingDecision }

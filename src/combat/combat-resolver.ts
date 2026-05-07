@@ -448,3 +448,50 @@ export function calcExperience(enemy: Enemy): number {
   const realmBonus = enemy.realm.progressIndex * 5;
   return baseExp + realmBonus;
 }
+
+// ==================== 宠物战斗伤害 ====================
+
+export interface PetDamageResult {
+  damage: number;
+  isCrit: boolean;
+  narrative: string;
+}
+
+/** 计算宠物技能伤害 */
+export function calcPetSkillDamage(
+  petAttack: number,
+  _skillCooldown: number,
+  enemyDefense: number,
+  randomFn: () => number = Math.random
+): PetDamageResult {
+  const baseDamage = petAttack * 1.0 - enemyDefense * 0.3;
+  const variedDamage = applyVariance(Math.max(1, baseDamage), randomFn);
+  const isCrit = rollCrit(randomFn);
+  const finalDamage = isCrit ? Math.round(variedDamage * 1.8) : Math.round(variedDamage);
+  const clampedDamage = Math.max(1, finalDamage);
+
+  return {
+    damage: clampedDamage,
+    isCrit,
+    narrative: isCrit ? `造成 ${clampedDamage} 点伤害（暴击！）` : `造成 ${clampedDamage} 点伤害`,
+  };
+}
+
+/** 计算宠物普通攻击伤害 */
+export function calcPetBasicDamage(
+  petAttack: number,
+  enemyDefense: number,
+  randomFn: () => number = Math.random
+): PetDamageResult {
+  const baseDamage = petAttack * 0.7 - enemyDefense * 0.3;
+  const variedDamage = applyVariance(Math.max(1, baseDamage), randomFn);
+  const isCrit = rollCrit(randomFn);
+  const finalDamage = isCrit ? Math.round(variedDamage * 1.8) : Math.round(variedDamage);
+  const clampedDamage = Math.max(1, finalDamage);
+
+  return {
+    damage: clampedDamage,
+    isCrit,
+    narrative: isCrit ? `造成 ${clampedDamage} 点伤害（暴击！）` : `造成 ${clampedDamage} 点伤害`,
+  };
+}

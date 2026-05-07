@@ -95,6 +95,61 @@ ${buildRealmDescriptions()}
 如果你想让玩家自动装备获得的物品，可以使用 equipment_change 事件，传入 slot 和 itemId（装备ID）。
 传入 itemId 为 null 表示卸下该槽位装备。
 
+## 灵宠系统
+
+苍梧山脉各处栖息着各种灵兽，玩家可以通过探索收服灵宠。灵宠可以协助战斗、通过喂养和互动提升忠诚度、以及进化变强。
+
+### 灵宠获取
+
+当玩家在特定区域探索时，你可以安排玩家遇到幼年灵兽并收服。使用 pet_obtain 事件给予灵宠。
+
+**可用灵宠模板ID**（构建 SpiritPet 时 id 字段使用模板ID）：
+| 模板ID | 物种 | 境界范围 | 出现区域 | 类型 |
+|--------|------|----------|---------|------|
+| spirit_fox | 灵狐 | 炼气-筑基 | 城外密林、灵溪谷 | 速度/攻击型 |
+| herb_rabbit | 药兔 | 炼气-筑基 | 城外密林、灵溪谷 | 辅助/治愈型 |
+| mystic_turtle | 玄龟 | 炼气-金丹 | 灵溪谷 | 防御/坦克型 |
+| stone_ape | 石猿 | 筑基-金丹 | 废弃矿洞、城外密林 | 均衡型 |
+| flame_tiger | 炎虎 | 筑基-金丹 | 废弃矿洞 | 高伤害型 |
+| thunder_roc | 雷鹏 | 金丹-元婴 | 古修洞府 | 速度/控制型 |
+| ice_phoenix | 冰凤 | 金丹-元婴 | 古修洞府 | 范围伤害/神圣型 |
+| ancient_dragon | 古龙 | 元婴-化神 | 古修洞府 | 全方位精英型 |
+
+构建 SpiritPet 对象时包含：
+- id: 模板ID
+- templateId: 模板ID（与 id 相同）
+- name: 可由玩家命名或你代起（如 "小狐"）
+- species: 使用上表中的物种名
+- level: 1（初始等级）
+- loyalty: 50（初始忠诚度）
+- stats: { hp, maxHp, attack, defense, speed } — 根据境界设置合理基础值，hp 等于 maxHp
+- skills: 初始包含1-2个技能（如攻击型灵宠有直伤技能，防御型有护盾，辅助型有治疗）
+  - 每个技能含 name, description, cooldown, currentCooldown: 0
+- evolutionStage: 1
+- evolutionPath: "normal"
+- description: 灵宠外观和行为描述
+
+### 灵宠进化
+
+当灵宠忠诚度和等级足够时，可以进化。使用 pet_evolve 事件：
+- petId: 灵宠ID
+- newStage: 目标阶段数（当前阶段+1）
+- newPath: "normal" / "divine" / "demonic"
+  - normal：普通进化，忠诚度>=50可进化
+  - divine：神圣进化，忠诚度>=70可进化，属性增长更高
+  - demonic：魔化进化，忠诚度>=40可进化，攻击力暴涨但防御略低
+
+### 灵宠互动
+
+- 喂养：pet_feed 事件（petId, itemId, healAmount, loyaltyChange）
+- 互动：pet_interact 事件（petId, loyaltyChange）
+- 忠诚度影响战斗：>=80 伤害+15%，<=30 概率拒绝行动
+
+### 灵宠在战斗中
+
+灵宠在 Boss 战中可参与战斗（玩家可选择 pet_assist 行动）。宠物技能冷却由战斗系统管理。
+收服灵宠时，应在叙事中描述玩家如何发现灵兽（幼崽受伤、灵兽主动示好、孵化灵兽蛋等）。
+
 ## 物品使用系统
 
 玩家可以使用消耗品（type 为 "consumable" 的物品）。消耗品有 effects 数组定义其使用效果。

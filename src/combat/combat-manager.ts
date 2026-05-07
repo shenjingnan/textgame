@@ -17,6 +17,8 @@ import {
   applyDefendReduction,
   calcEnemyDamage,
   calcFlee,
+  calcPetBasicDamage,
+  calcPetSkillDamage,
   calcPlayerDamage,
   calculatePlayerAttack,
   calculatePlayerDefense,
@@ -293,14 +295,62 @@ export function processRound(
       }
     }
   } else if (playerAction.type === 'pet_assist') {
-    // 灵宠助战：造成额外伤害
+    // 灵宠助战：技能优先，支持冷却和忠诚度
     const pet = state.pets.find((p) => p.id === state.activePetId);
     if (pet) {
-      const petDmg = Math.max(1, Math.round(pet.stats.attack * 0.5 + randomFn() * 10));
-      events.push(Events.statChange('enemy', { hp: -petDmg }));
-      events.push(
-        Events.narrative('system', `${pet.name}协助攻击，对${enemy.name}造成 ${petDmg} 点伤害！`)
-      );
+      // 忠诚度检查：是否拒绝行动
+      const loyaltyRoll = randomFn();
+      const willRefuse =
+        (pet.loyalty <= 19 && loyaltyRoll < 0.5) || (pet.loyalty <= 30 && loyaltyRoll < 0.25);
+
+      if (willRefuse) {
+        events.push(
+          Events.narrative(
+            'system',
+            pet.loyalty <= 19
+              ? `${pet.name}对你的命令置若罔闻，叛逆地站在一旁。`
+              : `${pet.name}显得不太情愿，没有回应你的指令。`
+          )
+        );
+      } else {
+        // 忠诚度伤害加成
+        const loyaltyMultiplier = pet.loyalty >= 80 ? 1.15 : 1.0;
+
+        const skillName = playerAction.petSkillName;
+        const skill = skillName
+          ? pet.skills.find((s) => s.name === skillName && s.currentCooldown <= 0)
+          : undefined;
+
+        if (skill) {
+          // 使用宠物技能
+          const dmgResult = calcPetSkillDamage(
+            pet.stats.attack,
+            skill.cooldown,
+            enemy.defense,
+            randomFn
+          );
+          const finalDmg = Math.max(1, Math.round(dmgResult.damage * loyaltyMultiplier));
+          events.push(Events.statChange('enemy', { hp: -finalDmg }));
+          events.push(Events.petSkillCooldown(pet.id, skill.name, skill.cooldown));
+          events.push(
+            Events.narrative(
+              'system',
+              `${pet.name}施展「${skill.name}」，对${enemy.name}${dmgResult.narrative}！`
+            )
+          );
+        } else {
+          // 普通攻击
+          const dmgResult = calcPetBasicDamage(pet.stats.attack, enemy.defense, randomFn);
+          const finalDmg = Math.max(1, Math.round(dmgResult.damage * loyaltyMultiplier));
+          events.push(Events.statChange('enemy', { hp: -finalDmg }));
+          events.push(
+            Events.narrative(
+              'system',
+              `${pet.name}协助攻击，对${enemy.name}${dmgResult.narrative}！`
+            )
+          );
+        }
+      }
     }
   }
 
@@ -331,6 +381,16 @@ export function processRound(
     events.push(Events.statChange('player', { hp: -enemyDmg.damage }));
   }
   // 敌人防御：不需要额外处理，因为不影响 player 的伤害值
+
+  // ---- 宠物技能冷却递减 ----
+  const activePet = state.pets.find((p) => p.id === state.activePetId);
+  if (activePet) {
+    for (const skill of activePet.skills) {
+      if (skill.currentCooldown > 0) {
+        events.push(Events.petSkillCooldown(activePet.id, skill.name, skill.currentCooldown - 1));
+      }
+    }
+  }
 
   // ---- 生成回合叙事 ----
   const turnNarrative = buildTurnNarrative(state, playerAction, enemyAction, playerDefending);
@@ -411,7 +471,12 @@ export function buildTurnNarrative(
       break;
     case 'pet_assist': {
       const pet = state.pets.find((p) => p.id === state.activePetId);
-      parts.push(pet ? `你命令${pet.name}助战` : '你召唤灵宠助战');
+      if (pet) {
+        const skillName = playerAction.petSkillName;
+        parts.push(skillName ? `你命令${pet.name}施展「${skillName}」` : `你命令${pet.name}助战`);
+      } else {
+        parts.push('你召唤灵宠助战');
+      }
       break;
     }
   }

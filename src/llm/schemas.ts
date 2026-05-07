@@ -173,6 +173,72 @@ const TradeEventSchema = Type.Object({
   spiritStonesChange: Type.Number(),
 });
 
+// ---- Phase 7 灵宠事件 ----
+
+const PetStatsSchema = Type.Object({
+  hp: Type.Number(),
+  maxHp: Type.Number(),
+  attack: Type.Number(),
+  defense: Type.Number(),
+  speed: Type.Number(),
+});
+
+const PetSkillSchema = Type.Object({
+  name: Type.String(),
+  description: Type.String(),
+  cooldown: Type.Number(),
+  currentCooldown: Type.Number(),
+});
+
+const SpiritPetSchema = Type.Object({
+  id: Type.String(),
+  templateId: Type.String(),
+  name: Type.String(),
+  species: Type.String(),
+  level: Type.Number(),
+  loyalty: Type.Number(),
+  stats: PetStatsSchema,
+  skills: Type.Array(PetSkillSchema),
+  evolutionStage: Type.Number(),
+  evolutionPath: Type.Union([
+    Type.Literal('normal'),
+    Type.Literal('divine'),
+    Type.Literal('demonic'),
+  ]),
+  description: Type.String(),
+});
+
+const PetObtainEventSchema = Type.Object({
+  type: Type.Literal('pet_obtain'),
+  pet: SpiritPetSchema,
+});
+
+const PetEvolveEventSchema = Type.Object({
+  type: Type.Literal('pet_evolve'),
+  petId: Type.String(),
+  newStage: Type.Number(),
+  newPath: Type.String(),
+});
+
+const PetReleaseEventSchema = Type.Object({
+  type: Type.Literal('pet_release'),
+  petId: Type.String(),
+});
+
+const PetFeedEventSchema = Type.Object({
+  type: Type.Literal('pet_feed'),
+  petId: Type.String(),
+  itemId: Type.String(),
+  healAmount: Type.Number(),
+  loyaltyChange: Type.Number(),
+});
+
+const PetInteractEventSchema = Type.Object({
+  type: Type.Literal('pet_interact'),
+  petId: Type.String(),
+  loyaltyChange: Type.Number(),
+});
+
 // ==================== 事件联合类型 ====================
 
 const GameEventSchema = Type.Union([
@@ -187,6 +253,11 @@ const GameEventSchema = Type.Union([
   DecisionRequiredEventSchema,
   CultivationGainEventSchema,
   RealmAdvanceEventSchema,
+  PetObtainEventSchema,
+  PetEvolveEventSchema,
+  PetReleaseEventSchema,
+  PetFeedEventSchema,
+  PetInteractEventSchema,
 ]);
 
 // ==================== emit_events 参数 ====================

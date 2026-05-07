@@ -106,6 +106,45 @@ export function petRelease(petId: string): GameEvent {
   return { type: 'pet_release', petId };
 }
 
+export function petFeed(
+  petId: string,
+  itemId: string,
+  healAmount: number,
+  loyaltyChange: number
+): GameEvent {
+  return { type: 'pet_feed', petId, itemId, healAmount, loyaltyChange };
+}
+
+export function petInteract(petId: string, loyaltyChange: number): GameEvent {
+  return { type: 'pet_interact', petId, loyaltyChange };
+}
+
+export function petLevelUp(
+  petId: string,
+  newLevel: number,
+  statIncreases: Partial<{
+    hp: number;
+    maxHp: number;
+    attack: number;
+    defense: number;
+    speed: number;
+  }>
+): GameEvent {
+  return { type: 'pet_level_up', petId, newLevel, statIncreases };
+}
+
+export function petSkillCooldown(petId: string, skillName: string, cooldown: number): GameEvent {
+  return { type: 'pet_skill_cooldown', petId, skillName, cooldown };
+}
+
+export function petSwitch(petId: string): GameEvent {
+  return { type: 'pet_switch', petId };
+}
+
+export function petRename(petId: string, newName: string): GameEvent {
+  return { type: 'pet_rename', petId, newName };
+}
+
 // ==================== 功法相关 ====================
 
 export function techniqueLearn(technique: Technique): GameEvent {
