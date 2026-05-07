@@ -47,6 +47,7 @@ import {
   performCultivation,
   resolveTribulation,
 } from '../player/realm';
+import { decodeArchive, encodeArchive } from '../save/archive-code';
 import {
   CANGWU_MOUNTAINS,
   canMoveTo,
@@ -292,6 +293,12 @@ export class GameEngine {
 
       case '/load':
         return this.cmdLoad(arg);
+
+      case '/export-save':
+        return this.cmdExportSave();
+
+      case '/import-save':
+        return this.cmdImportSave(arg);
 
       case '/help':
         return this.cmdHelp();
@@ -905,6 +912,48 @@ export class GameEngine {
     return { type: 'error', message: `读档失败：${result.error}` };
   }
 
+  // ---- 存档码（Phase 8） ----
+
+  private cmdExportSave(): CommandResult {
+    try {
+      const code = encodeArchive(this.state);
+      return {
+        type: 'narrative_append',
+        message: `\n\n*存档码已生成：*\n\n\`\`\`\n${code}\n\`\`\`\n\n*复制上方代码即可分享存档或在其他设备导入。*`,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '导出失败';
+      return { type: 'error', message: `导出存档码失败：${message}` };
+    }
+  }
+
+  private cmdImportSave(code: string): CommandResult {
+    if (!code || code.trim().length === 0) {
+      return { type: 'error', message: '请提供存档码。用法：/import-save <存档码>' };
+    }
+    try {
+      const { state, meta } = decodeArchive(code.trim());
+      this.state = state;
+      this.contextManager.clear();
+      this.contextManager.addUserMessage(
+        `[存档码导入] 玩家「${state.player.name}」在${getLocationName(state.world.currentLocationId)}继续冒险。` +
+          `当前状态：${buildStatusSummary(state)}`
+      );
+      this.accumulatedText = '';
+      this.callbacks.onStateUpdate(this.state);
+      return {
+        type: 'narrative_append',
+        message:
+          `\n\n*存档码导入成功！欢迎回来，${state.player.name}。*\n\n` +
+          `*存档信息：${meta.realm} · 第${meta.turn}回合 · 导出时间：${new Date(meta.exportedAt).toLocaleString('zh-CN')}*\n\n` +
+          `*当前位置：${getLocationName(state.world.currentLocationId)}*\n\n你可以输入 /look 查看周围环境。`,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '导入失败';
+      return { type: 'error', message: `导入存档码失败：${message}` };
+    }
+  }
+
   private cmdHelp(): CommandResult {
     return {
       type: 'narrative_append',
@@ -927,6 +976,8 @@ export class GameEngine {
 | /repair <槽位> | 消耗灵石修理损坏的装备 |
 | /save [槽位] | 保存游戏 |
 | /load [槽位] | 读取存档 |
+| /export-save | 导出存档码（可复制分享） |
+| /import-save <存档码> | 从存档码导入游戏 |
 | /help | 显示此帮助 |
 | /quit | 退出游戏 |
 
