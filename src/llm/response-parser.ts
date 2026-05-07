@@ -83,12 +83,26 @@ const RawDecisionRequiredEventSchema = z.object({
   decision: PendingDecisionSchema,
 });
 
+const RawCultivationGainEventSchema = z.object({
+  type: z.literal('cultivation_gain'),
+  amount: z.number(),
+});
+
+const RawRealmAdvanceEventSchema = z.object({
+  type: z.literal('realm_advance'),
+  newSubStage: z.string(),
+  newRealm: z.string(),
+  newProgressIndex: z.number(),
+});
+
 const RawGameEventSchema = z.discriminatedUnion('type', [
   RawNarrativeEventSchema,
   RawStatChangeEventSchema,
   RawItemAddEventSchema,
   RawSpiritStonesChangeEventSchema,
   RawDecisionRequiredEventSchema,
+  RawCultivationGainEventSchema,
+  RawRealmAdvanceEventSchema,
 ]);
 
 const EmitEventsParamsSchema = z.object({
@@ -280,6 +294,27 @@ function rawToGameEvent(raw: z.infer<typeof RawGameEventSchema>): GameEvent | nu
       return {
         type: 'decision_required',
         decision: raw.decision,
+      };
+
+    case 'cultivation_gain':
+      return {
+        type: 'cultivation_gain',
+        amount: raw.amount,
+      };
+
+    case 'realm_advance':
+      return {
+        type: 'realm_advance',
+        newSubStage: raw.newSubStage as GameEvent extends {
+          type: 'realm_advance';
+          newSubStage: infer S;
+        }
+          ? S
+          : never,
+        newRealm: raw.newRealm as GameEvent extends { type: 'realm_advance'; newRealm: infer R }
+          ? R
+          : never,
+        newProgressIndex: raw.newProgressIndex,
       };
 
     default:

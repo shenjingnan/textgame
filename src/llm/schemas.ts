@@ -91,6 +91,18 @@ const DecisionRequiredEventSchema = Type.Object({
   decision: PendingDecisionSchema,
 });
 
+const CultivationGainEventSchema = Type.Object({
+  type: Type.Literal('cultivation_gain'),
+  amount: Type.Number(),
+});
+
+const RealmAdvanceEventSchema = Type.Object({
+  type: Type.Literal('realm_advance'),
+  newSubStage: Type.String(),
+  newRealm: Type.String(),
+  newProgressIndex: Type.Number(),
+});
+
 // ==================== 事件联合类型 ====================
 
 const GameEventSchema = Type.Union([
@@ -99,6 +111,8 @@ const GameEventSchema = Type.Union([
   ItemAddEventSchema,
   SpiritStonesChangeEventSchema,
   DecisionRequiredEventSchema,
+  CultivationGainEventSchema,
+  RealmAdvanceEventSchema,
 ]);
 
 // ==================== emit_events 参数 ====================

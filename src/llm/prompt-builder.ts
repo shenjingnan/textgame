@@ -38,6 +38,12 @@ ${buildRealmDescriptions()}
 4. **奖励匹配风险**：高危险区域才有高价值物品
 5. **所有状态变化通过 emit_events 表达**：不要用文字描述状态变化，必须调用 emit_events 函数
 6. **关键抉择设置菜单**：当玩家面临重要选择时，使用 decision_required 事件提供菜单选项
+7. **修炼与突破**：
+   - 玩家可以通过探索、奇遇、修炼获得修为（使用 cultivation_gain 事件，amount 为正数）
+   - 修炼地点影响速度：秘境(快) > 宗门 > 野外 > 城镇 > 矿洞(慢)
+   - 修炼满100%时系统会自动提示突破，你不需要主动处理突破
+   - 不要使用 realm_advance 事件让玩家跳过突破流程——突破由游戏系统处理
+   - 但你可以通过叙事描述修炼场景、灵气波动等
 
 ## 叙事风格
 
@@ -53,7 +59,9 @@ ${buildRealmDescriptions()}
 narrative 事件的 text 字段是你的完整叙事文本。
 所有状态变化（生命值、灵力、灵石、物品、修炼进度等）必须通过对应的事件类型表达。
 不要用文字描述"你获得了X灵石"，而应该同时发出 narrative 事件（描述发现灵石）和 spirit_stones_change 事件（实际修改数值）。
-如果玩家面临重要抉择，在 events 数组之外设置 pending_decision 字段。`;
+如果玩家面临重要抉择，在 events 数组之外设置 pending_decision 字段。
+玩家在灵气充沛之地修炼时，适时给予 cultivation_gain 事件（每次1-15点为宜）。
+不要使用 realm_advance 事件——突破由游戏系统自动处理。`;
 }
 
 function buildRealmDescriptions(): string {

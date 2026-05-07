@@ -87,9 +87,11 @@ function buildStatusLine(state: GameState): string {
   const realm = `${player.realm.name}${player.realm.subStage}`;
   const hpBar = buildBar(player.stats.hp, player.stats.maxHp, 10);
   const qiBar = buildBar(player.stats.qi, player.stats.maxQi, 8);
+  const cultBar = buildBar(player.realm.cultivation, 100, 8);
   return (
     style(' 修仙文字RPG ', colors.bold + colors.cyan + SGR(7)) +
     ` ${style(realm, colors.yellow)} | ` +
+    `修炼 ${style(cultBar, colors.magenta)} ${player.realm.cultivation}% | ` +
     `HP ${style(hpBar, colors.green)} ${player.stats.hp}/${player.stats.maxHp} | ` +
     `灵力 ${style(qiBar, colors.blue)} ${player.stats.qi}/${player.stats.maxQi} | ` +
     `灵石 ${style(String(player.spiritStones), colors.yellow)} | ` +
@@ -196,6 +198,9 @@ class TuiGameRunner {
     this.narrativeView.setText(this.narrativeText);
     this.statusBar.setText(buildStatusLine(this.engine.getState()));
     this.tui.requestRender();
+
+    // 启动角色创建流程
+    this.engine.startCharacterCreation();
   }
 
   /** 启动游戏 */
